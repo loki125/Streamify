@@ -32,10 +32,9 @@ Streamify is a lightweight, resource-efficient desktop frontend for watching liv
 - [ ] **Desktop Notifications**: Implement a periodic background timer to monitor favorite streams and trigger a native Linux desktop notification immediately when a tracked streamer goes live.
 
 ### Milestone 4: Code Quality & Repository Packaging
-- [ ] **Refactor & Modularize Code**: Split the monolithic single-file script into a clean, structured package (e.g., `main.py`, `backend.py`, `ui.py`, and `styles.py`).
-- [ ] **Linux Desktop Launcher**: Create a standard Linux `.desktop` launcher file and application icon.
-- [ ] **Standard Python Packaging**: Set up a modern `pyproject.toml` file with proper dependency tracking.
+- [X] **Refactor & Modularize Code**: Split the monolithic single-file script into a clean, structured package (e.g., `main.py`, `backend.py`, `ui.py`, and `styles.py`).
+- [X] **Linux Desktop Launcher**: Create a standard Linux `.desktop` launcher file and application icon.
+- [X] **Standard Python Packaging**: Set up a modern `pyproject.toml` file with proper dependency tracking.
 - [ ] **Target Package Repositories**: Create and submit templates for packaging systems, with a primary focus on Void Linux's `xbps-packages` repository.
 
 ---
-
