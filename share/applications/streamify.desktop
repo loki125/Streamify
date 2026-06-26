@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Streamify
+Comment=Lightweight frontend for Streamlink and MPV
+Exec=streamify
+Icon=streamify
+Terminal=false
+Categories=AudioVideo;Video;Player;Qt;
+Keywords=stream;streamlink;live;twitch;video;
