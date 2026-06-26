@@ -1,0 +1,845 @@
+#!/usr/bin/env python3
+
+import argparse
+import concurrent.futures
+import json
+import os
+import re
+import subprocess
+import sys
+import threading
+from dataclasses import dataclass
+from typing import Dict, List
+
+from PyQt5.QtCore import QObject, Qt, QTimer, pyqtSignal, pyqtSlot
+
+# --- PyQt5 Imports ---
+from PyQt5.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QDialog,
+    QFormLayout,
+    QFrame,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
+from streamlink.session.session import Streamlink
+
+# --- COMMAND LINE ARGS & CONFIGURATION ---
+parser = argparse.ArgumentParser(description="Lightweight Stream Launcher")
+parser.add_argument(
+    "--player", type=str, default="mpv", help="Default player to use (e.g., mpv)"
+)
+args = parser.parse_args()
+
+FAVORITES_FILE = os.path.expanduser("~/.config/streamlink_favorites.json")
+APP_NAME = "Streamify"
+DEFAULT_PLAYER = args.player
+
+
+@dataclass
+class Stream:
+    name: str
+    url_id: int
+    category_id: int
+
+
+def get_stylesheet(is_dark):
+    """Returns the global CSS depending on the selected theme."""
+    if is_dark:
+        return """
+        QMainWindow, QDialog, QMessageBox { background-color: #1e1e2e; color: #cdd6f4; font-family: "Segoe UI", Arial, sans-serif; font-size: 13px; }
+        QWidget { color: #cdd6f4; font-family: "Segoe UI", Arial, sans-serif; }
+        QLineEdit, QComboBox { background-color: #313244; border: 1px solid #45475a; border-radius: 4px; padding: 5px; color: #cdd6f4; }
+        QComboBox::drop-down { border: none; }
+        QPushButton { background-color: #45475a; color: #cdd6f4; border: none; border-radius: 4px; padding: 6px 12px; }
+        QPushButton:hover { background-color: #585b70; }
+        QPushButton:pressed { background-color: #313244; }
+        QPushButton:disabled { background-color: #313244; color: #6c7086; }
+        QScrollArea { border: none; background-color: transparent; }
+        QScrollBar:vertical { background-color: #1e1e2e; width: 8px; margin: 0px; border-radius: 4px; }
+        QScrollBar::handle:vertical { background-color: #45475a; min-height: 20px; border-radius: 4px; }
+        QScrollBar::handle:vertical:hover { background-color: #585b70; }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+        QLabel { background: transparent; }
+        QLabel[class="header-label"] { font-weight: bold; color: #a6adc8; }
+        QLabel[class="bold-label"] { font-weight: bold; }
+        """
+    else:
+        return """
+        QMainWindow, QDialog, QMessageBox { background-color: #f5f5f5; color: #333333; font-family: "Segoe UI", Arial, sans-serif; font-size: 13px; }
+        QWidget { color: #333333; font-family: "Segoe UI", Arial, sans-serif; }
+        QLineEdit, QComboBox { background-color: #ffffff; border: 1px solid #cccccc; border-radius: 4px; padding: 5px; color: #333333; }
+        QComboBox::drop-down { border: none; }
+        QPushButton { background-color: #e0e0e0; color: #333333; border: none; border-radius: 4px; padding: 6px 12px; }
+        QPushButton:hover { background-color: #d0d0d0; }
+        QPushButton:pressed { background-color: #cccccc; }
+        QPushButton:disabled { background-color: #e0e0e0; color: #999999; }
+        QScrollArea { border: none; background-color: transparent; }
+        QScrollBar:vertical { background-color: #f5f5f5; width: 8px; margin: 0px; border-radius: 4px; }
+        QScrollBar::handle:vertical { background-color: #cccccc; min-height: 20px; border-radius: 4px; }
+        QScrollBar::handle:vertical:hover { background-color: #bbbbbb; }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+        QLabel { background: transparent; }
+        QLabel[class="header-label"] { font-weight: bold; color: #555555; }
+        QLabel[class="bold-label"] { font-weight: bold; }
+        """
+
+
+# --- BACKEND MANAGER (Unchanged) ---
+class StreamlinkManager:
+    def __init__(self, favorites_path=FAVORITES_FILE, player=DEFAULT_PLAYER):
+        self.favorites_path = favorites_path
+        self.player = player
+        self.session = Streamlink()
+
+        self.current_process = None
+        self.active_stream_idx = None
+
+        self._raw_data = self._read_or_create_json()
+
+        self.streams: List[Stream] = self.load_streams()
+        self.categorys: Dict[str, int] = self.load_categorys()
+        self.urls: Dict[str, int] = self.load_urls()
+
+    def _read_or_create_json(self):
+        if not os.path.exists(self.favorites_path):
+            os.makedirs(os.path.dirname(self.favorites_path), exist_ok=True)
+            default_data = {
+                "streams": [],
+                "urls": ["twitch.tv"],
+                "categorys": ["Gaming", "Just Chatting", "General"],
+            }
+            with open(self.favorites_path, "w") as f:
+                json.dump(default_data, f, indent=4)
+            return default_data
+
+        with open(self.favorites_path, "r") as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return {"streams": [], "urls": ["twitch.tv"], "categorys": ["General"]}
+
+    def load_streams(self) -> List[Stream]:
+        raw_streams = self._raw_data.get("streams", [])
+        return [Stream(**s) for s in raw_streams]
+
+    def load_categorys(self) -> Dict[str, int]:
+        raw_cats = self._raw_data.get("categorys", [])
+        return {cat: idx for idx, cat in enumerate(raw_cats)}
+
+    def load_urls(self) -> Dict[str, int]:
+        raw_urls = self._raw_data.get("urls", [])
+        return {url: idx for idx, url in enumerate(raw_urls)}
+
+    def save_favorites(self):
+        cat_list = [""] * len(self.categorys)
+        for k, v in self.categorys.items():
+            cat_list[v] = k
+
+        url_list = [""] * len(self.urls)
+        for k, v in self.urls.items():
+            url_list[v] = k
+
+        data = {
+            "streams": [
+                {"name": s.name, "url_id": s.url_id, "category_id": s.category_id}
+                for s in self.streams
+            ],
+            "urls": url_list,
+            "categorys": cat_list,
+        }
+
+        with open(self.favorites_path, "w") as f:
+            json.dump(data, f, indent=4)
+
+    def add_stream(self, stream: Stream):
+        self.streams.append(stream)
+        self.save_favorites()
+
+    def delete_stream(self, idx):
+        if 0 <= idx < len(self.streams):
+            if self.active_stream_idx == idx:
+                self.stop_stream()
+            self.streams.pop(idx)
+            self.save_favorites()
+
+    def launch_stream(self, idx, quality="best", wid=None):
+        self.stop_stream()
+
+        if 0 <= idx < len(self.streams):
+            stream = self.streams[idx]
+            url_str = self.get_url_by_id(stream.url_id)
+            full_url = f"https://{url_str}/{stream.name}"
+
+            player_args = f"--wid={wid} {{filename}}" if wid else "{filename}"
+            cmd = [
+                "streamlink",
+                full_url,
+                quality,
+                "--player",
+                self.player,
+                "-a",
+                player_args,
+            ]
+
+            self.current_process = subprocess.Popen(
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            self.active_stream_idx = idx
+
+    def stop_stream(self):
+        if self.current_process is not None:
+            self.current_process.terminate()
+            self.current_process = None
+        self.active_stream_idx = None
+
+    def add_category(self, name):
+        if name and name not in self.categorys:
+            self.categorys[name] = len(self.categorys)
+            self.save_favorites()
+
+    def delete_category(self, name):
+        if name in self.categorys:
+            del self.categorys[name]
+            self.categorys = {k: i for i, k in enumerate(self.categorys.keys())}
+            self.save_favorites()
+
+    def add_url(self, url):
+        if url not in self.urls:
+            self.urls[url] = len(self.urls)
+            self.save_favorites()
+
+    def search_streams(self, name, category):
+        results = []
+        name_pattern = re.compile(name, re.IGNORECASE) if name else None
+
+        for idx, s in enumerate(self.streams):
+            cat_str = self.get_category_by_id(s.category_id)
+            if category and category != "All" and cat_str != category:
+                continue
+            if name_pattern and not name_pattern.search(s.name):
+                continue
+            results.append((idx, s))
+
+        return results
+
+    def check_statuses_once(self, update_callback):
+        def check_single(stream):
+            status = "Offline"
+            try:
+                url_str = self.get_url_by_id(stream.url_id)
+                full_url = f"https://{url_str}/{stream.name}"
+                streams = self.session.streams(full_url)
+                if streams:
+                    status = "Live"
+            except Exception:
+                status = "Error"
+            update_callback(stream, status)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            for stream in self.streams:
+                executor.submit(check_single, stream)
+
+    def get_url_by_id(self, url_id: int) -> str:
+        for k, v in self.urls.items():
+            if v == url_id:
+                return k
+        return ""
+
+    def get_category_by_id(self, cat_id: int) -> str:
+        for k, v in self.categorys.items():
+            if v == cat_id:
+                return k
+        return ""
+
+
+# --- GRAPHICAL USER INTERFACE ---
+
+
+class SignalEmitter(QObject):
+    """Signals to safely interact with the UI from background threads."""
+
+    status_updated = pyqtSignal(object, str)
+    check_finished = pyqtSignal()  # Ensures "Check Status" safely resets
+
+
+class RowFrame(QFrame):
+    """Custom Frame for a modern row with hover & selection states matching the Theme."""
+
+    clicked = pyqtSignal(int)
+
+    def __init__(self, idx, is_dark, parent=None):
+        super().__init__(parent)
+        self.idx = idx
+        self.is_dark = is_dark
+        self.selected = False
+        self.update_style()
+
+    def update_style(self):
+        bg_sel = "#313244" if self.is_dark else "#dcdcdc"
+        border = "#313244" if self.is_dark else "#cccccc"
+
+        if self.selected:
+            self.setStyleSheet(f"background-color: {bg_sel}; border-radius: 6px;")
+        else:
+            self.setStyleSheet(
+                f"background-color: transparent; border-bottom: 1px solid {border}; border-radius: 0px;"
+            )
+
+    def set_selected(self, val):
+        self.selected = val
+        self.update_style()
+
+    def enterEvent(self, event):
+        if not self.selected:
+            bg_hover = "#2a2b3c" if self.is_dark else "#e8e8e8"
+            border = "#313244" if self.is_dark else "#cccccc"
+            self.setStyleSheet(
+                f"background-color: {bg_hover}; border-bottom: 1px solid {border}; border-radius: 6px;"
+            )
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.update_style()
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        self.clicked.emit(self.idx)
+        super().mousePressEvent(event)
+
+
+class HoverToggleFrame(QFrame):
+    """A sidebar toggle bar that completely auto-hides when watching streams in full screen."""
+
+    def __init__(self, toggle_callback, is_dark, parent=None):
+        super().__init__(parent)
+        self.toggle_callback = toggle_callback
+        self.sidebar_visible = True
+
+        self.setStyleSheet("background-color: transparent;")
+
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+
+        self.btn = QPushButton("<")
+        self.btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.btn.clicked.connect(self.on_click)
+        self.layout.addWidget(self.btn)
+
+        self.update_theme(is_dark)
+        self.update_state()
+
+    def update_theme(self, is_dark):
+        self.is_dark = is_dark
+        btn_bg = "#313244" if is_dark else "#cccccc"
+        btn_hover = "#45475a" if is_dark else "#bbbbbb"
+        text_color = "#cdd6f4" if is_dark else "#333333"
+
+        self.btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {btn_bg};
+                border: none;
+                border-radius: 0px;
+                color: {text_color};
+            }}
+            QPushButton:hover {{ background-color: {btn_hover}; }}
+        """)
+
+    def on_click(self):
+        self.sidebar_visible = not self.sidebar_visible
+        self.toggle_callback()
+        self.update_state()
+
+    def update_state(self):
+        if self.sidebar_visible:
+            self.setFixedWidth(15)
+            self.btn.setText("<")
+            self.btn.show()
+        else:
+            self.setFixedWidth(3)
+            self.btn.hide()
+
+    def enterEvent(self, event):
+        if not self.sidebar_visible:
+            self.setFixedWidth(20)
+            self.btn.setText(">")
+            self.btn.show()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        if not self.sidebar_visible:
+            self.setFixedWidth(3)
+            self.btn.hide()
+        super().leaveEvent(event)
+
+
+class AddStreamDialog(QDialog):
+    def __init__(self, manager, parent=None):
+        super().__init__(parent)
+        self.manager = manager
+        self.setWindowTitle("Add New Stream")
+        self.resize(320, 160)
+
+        layout = QFormLayout(self)
+        layout.setSpacing(12)
+
+        self.name_input = QLineEdit()
+        layout.addRow("Stream Name (Channel):", self.name_input)
+
+        self.url_cb = QComboBox()
+        self.url_cb.addItems(list(self.manager.urls.keys()))
+        layout.addRow("Platform (URL):", self.url_cb)
+
+        self.cat_cb = QComboBox()
+        self.cat_cb.addItems(list(self.manager.categorys.keys()))
+        layout.addRow("Category:", self.cat_cb)
+
+        save_btn = QPushButton("Save")
+        save_btn.clicked.connect(self.accept)
+        layout.addRow("", save_btn)
+
+    def get_data(self):
+        return (
+            self.name_input.text().strip(),
+            self.url_cb.currentText(),
+            self.cat_cb.currentText(),
+        )
+
+
+class StreamlinkGUI(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.manager = StreamlinkManager()
+        self.setWindowTitle(APP_NAME)
+        self.resize(1150, 700)
+
+        self.is_dark = True  # Keep track of Theme State
+
+        self.selected_idx = None
+        self.rows_gui_map = {}
+
+        self.emitter = SignalEmitter()
+        self.emitter.status_updated.connect(self.update_gui_status_slot)
+        self.emitter.check_finished.connect(
+            self.on_check_finished
+        )  # Fix for sticking "Checking..."
+
+        self.build_ui()
+        self.apply_theme()
+        self.refresh_list()
+
+        # Start Process Monitor
+        self.monitor_timer = QTimer(self)
+        self.monitor_timer.timeout.connect(self.start_process_monitor)
+        self.monitor_timer.start(1000)
+
+    def apply_theme(self):
+        """Applies the current Light/Dark styles to all widgets."""
+        QApplication.instance().setStyleSheet(get_stylesheet(self.is_dark))
+
+        sidebar_bg = "#181825" if self.is_dark else "#ffffff"
+        self.sidebar_frame.setStyleSheet(f"background-color: {sidebar_bg};")
+
+        self.toggle_frame.update_theme(self.is_dark)
+
+        self.check_btn.setStyleSheet(
+            f"background-color: {self.get_status_color('')}; color: white;"
+        )
+        self.btn_theme.setStyleSheet(
+            f"background-color: {self.get_status_color('')}; color: white;"
+        )
+        self.add_btn.setStyleSheet(
+            f"background-color: {self.get_status_color('')}; color: white;"
+        )
+
+    def toggle_theme(self):
+        """Swaps the theme state and redraws the UI."""
+        self.is_dark = not self.is_dark
+        self.btn_theme.setText("☀️" if self.is_dark else "❨")
+        self.apply_theme()
+        self.refresh_list()  # Redraws the rows using new theme colors
+
+    def get_status_color(self, status_text):
+        """Returns the appropriate color for the background status badge."""
+        if status_text == "Live":
+            return "#2e8b57"
+        if status_text == "Error":
+            return "#d32f2f"
+
+        return "#45475a" if self.is_dark else "#999999"
+
+    def build_ui(self):
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # 1. Sidebar Frame
+        self.sidebar_frame = QWidget()
+        self.sidebar_frame.setFixedWidth(530)
+        sidebar_layout = QVBoxLayout(self.sidebar_frame)
+        sidebar_layout.setContentsMargins(15, 15, 10, 15)
+        sidebar_layout.setSpacing(10)
+
+        # 2. Dynamic Auto-Hiding Toggle Bar
+        self.toggle_frame = HoverToggleFrame(self.toggle_sidebar, self.is_dark)
+
+        # 3. Video Frame (Expands to fill)
+        self.video_frame = QWidget()
+        self.video_frame.setStyleSheet("background-color: #000000;")
+        self.video_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        main_layout.addWidget(self.sidebar_frame)
+        main_layout.addWidget(self.toggle_frame)
+        main_layout.addWidget(self.video_frame)
+
+        # --- SIDEBAR CONTENTS ---
+
+        # Search & Filters
+        top_frame = QWidget()
+        top_layout = QHBoxLayout(top_frame)
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        top_layout.setSpacing(8)
+
+        lbl_search = QLabel("Search:")
+        lbl_search.setProperty("class", "bold-label")
+        top_layout.addWidget(lbl_search)
+
+        self.search_var = QLineEdit()
+        self.search_var.setPlaceholderText("Find stream...")
+        self.search_var.textChanged.connect(self.refresh_list)
+        top_layout.addWidget(self.search_var)
+
+        lbl_cat = QLabel("Cat:")
+        lbl_cat.setProperty("class", "bold-label")
+        top_layout.addWidget(lbl_cat)
+
+        self.cat_filter_cb = QComboBox()
+        self.update_category_combobox()
+        self.cat_filter_cb.currentTextChanged.connect(self.refresh_list)
+        top_layout.addWidget(self.cat_filter_cb)
+
+        btn_add_cat = QPushButton("+")
+        btn_add_cat.setFixedWidth(32)
+        btn_add_cat.clicked.connect(self.add_category_dialog)
+        top_layout.addWidget(btn_add_cat)
+
+        btn_del_cat = QPushButton("-")
+        btn_del_cat.setFixedWidth(32)
+        btn_del_cat.clicked.connect(self.delete_category_dialog)
+        top_layout.addWidget(btn_del_cat)
+
+        # Theme Toggle Button (Sun/Moon)
+        self.btn_theme = QPushButton("☀️" if self.is_dark else "❨")
+        self.btn_theme.setStyleSheet(
+            f"background-color: {self.get_status_color('')}; color: white;"
+        )
+        self.btn_theme.setFixedWidth(32)
+        self.btn_theme.clicked.connect(self.toggle_theme)
+        top_layout.addWidget(self.btn_theme)
+
+        sidebar_layout.addWidget(top_frame)
+
+        # Header for custom list
+        header_frame = QFrame()
+        header_layout = QHBoxLayout(header_frame)
+        header_layout.setContentsMargins(5, 10, 5, 5)
+
+        def add_header(text, width=None):
+            lbl = QLabel(text)
+            lbl.setProperty("class", "header-label")
+            if width:
+                lbl.setFixedWidth(width)
+            header_layout.addWidget(lbl)
+
+        add_header("Action", 75)
+        add_header("Name", 120)
+        add_header("Platform", 80)
+        add_header("Category", 90)
+        add_header("Status", 80)
+        header_layout.addStretch()
+        sidebar_layout.addWidget(header_frame)
+
+        # Scrollable List Body
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+
+        self.scroll_widget = QWidget()
+        self.scroll_widget.setStyleSheet("background-color: transparent;")
+        self.scroll_layout = QVBoxLayout(self.scroll_widget)
+        self.scroll_layout.setAlignment(Qt.AlignTop)
+        self.scroll_layout.setContentsMargins(0, 0, 0, 0)
+        self.scroll_layout.setSpacing(2)
+
+        self.scroll_area.setWidget(self.scroll_widget)
+        sidebar_layout.addWidget(self.scroll_area)
+
+        # Bottom Controls
+        bot_frame = QWidget()
+        bot_layout = QHBoxLayout(bot_frame)
+        bot_layout.setContentsMargins(0, 5, 0, 0)
+        bot_layout.setSpacing(10)
+
+        lbl_qual = QLabel("Quality:")
+        lbl_qual.setProperty("class", "bold-label")
+        bot_layout.addWidget(lbl_qual)
+
+        self.quality_cb = QComboBox()
+        self.quality_cb.addItems(["best", "720p", "480p", "audio_only"])
+        bot_layout.addWidget(self.quality_cb)
+
+        self.check_btn = QPushButton("Check Status")
+        self.check_btn.setStyleSheet(
+            f"background-color: {self.get_status_color('')}; color: white;"
+        )
+        self.check_btn.clicked.connect(self.run_status_check)
+        bot_layout.addWidget(self.check_btn)
+
+        bot_layout.addStretch()
+
+        del_btn = QPushButton("Delete")
+        del_btn.setStyleSheet("background-color: #d32f2f; color: white;")
+        del_btn.clicked.connect(self.on_delete_clicked)
+        bot_layout.addWidget(del_btn)
+
+        self.add_btn = QPushButton("Add Stream")
+        self.add_btn.setStyleSheet(
+            f"background-color: {self.get_status_color('')}; color: white;"
+        )
+        self.add_btn.clicked.connect(self.open_add_dialog)
+        bot_layout.addWidget(self.add_btn)
+
+        sidebar_layout.addWidget(bot_frame)
+
+    def toggle_sidebar(self):
+        visible = self.toggle_frame.sidebar_visible
+        self.sidebar_frame.setVisible(visible)
+
+    def toggle_stream(self, idx):
+        if self.manager.active_stream_idx == idx:
+            self.manager.stop_stream()
+        else:
+            quality = self.quality_cb.currentText()
+            wid = str(int(self.video_frame.winId()))
+            self.manager.launch_stream(idx, quality, wid)
+        self.update_action_buttons()
+
+    def update_action_buttons(self):
+        for real_idx, widgets in self.rows_gui_map.items():
+            btn = widgets["action_btn"]
+            if self.manager.active_stream_idx == real_idx:
+                btn.setText("Stop")
+                btn.setStyleSheet(
+                    "background-color: #d32f2f; color: white; border-radius: 4px;"
+                )
+            else:
+                btn.setText("Launch")
+                btn.setStyleSheet(
+                    "background-color: #2e8b57; color: white; border-radius: 4px;"
+                )
+
+    def start_process_monitor(self):
+        if self.manager.current_process is not None:
+            if self.manager.current_process.poll() is not None:
+                self.manager.current_process = None
+                self.manager.active_stream_idx = None
+                self.update_action_buttons()
+
+    def update_category_combobox(self):
+        cats = ["All"] + list(self.manager.categorys.keys())
+        self.cat_filter_cb.clear()
+        self.cat_filter_cb.addItems(cats)
+
+    def refresh_list(self):
+        while self.scroll_layout.count():
+            item = self.scroll_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+        self.rows_gui_map.clear()
+        self.selected_idx = None
+
+        search_txt = self.search_var.text()
+        cat_filter = self.cat_filter_cb.currentText()
+        results = self.manager.search_streams(search_txt, cat_filter)
+
+        for real_idx, s in results:
+            url_str = self.manager.get_url_by_id(s.url_id)
+            cat_str = self.manager.get_category_by_id(s.category_id)
+
+            row_f = RowFrame(real_idx, self.is_dark)
+            row_f.clicked.connect(self.select_row)
+            row_layout = QHBoxLayout(row_f)
+            row_layout.setContentsMargins(5, 6, 5, 6)
+            row_layout.setSpacing(6)
+
+            is_active = self.manager.active_stream_idx == real_idx
+            btn_text = "Stop" if is_active else "Launch"
+            btn_bg = "#d32f2f" if is_active else "#2e8b57"
+
+            btn_action = QPushButton(btn_text)
+            btn_action.setFixedWidth(70)
+            btn_action.setStyleSheet(
+                f"background-color: {btn_bg}; color: white; border-radius: 4px; padding: 4px;"
+            )
+            btn_action.clicked.connect(
+                lambda checked, i=real_idx: self.toggle_stream(i)
+            )
+            row_layout.addWidget(btn_action)
+
+            def add_col(text, width):
+                lbl = QLabel(text)
+                lbl.setFixedWidth(width)
+                row_layout.addWidget(lbl)
+                return lbl
+
+            add_col(s.name, 110)
+            add_col(url_str, 80)
+            add_col(cat_str, 90)
+
+            lbl_status = QLabel("Unknown")
+            lbl_status.setFixedWidth(80)
+            lbl_status.setAlignment(Qt.AlignCenter)
+            bg_color = self.get_status_color("Unknown")
+            lbl_status.setStyleSheet(
+                f"background-color: {bg_color}; color: white; border-radius: 4px; padding: 2px;"
+            )
+            row_layout.addWidget(lbl_status)
+
+            row_layout.addStretch()
+            self.scroll_layout.addWidget(row_f)
+
+            self.rows_gui_map[real_idx] = {
+                "frame": row_f,
+                "status_lbl": lbl_status,
+                "action_btn": btn_action,
+            }
+
+    def select_row(self, idx):
+        if self.selected_idx is not None and self.selected_idx in self.rows_gui_map:
+            self.rows_gui_map[self.selected_idx]["frame"].set_selected(False)
+
+        self.selected_idx = idx
+        if idx in self.rows_gui_map:
+            self.rows_gui_map[idx]["frame"].set_selected(True)
+
+    def run_status_check(self):
+        self.check_btn.setEnabled(False)
+        self.check_btn.setText("Checking...")
+
+        for widgets in self.rows_gui_map.values():
+            lbl = widgets["status_lbl"]
+            lbl.setText("Checking...")
+            bg_color = self.get_status_color("Unknown")
+            lbl.setStyleSheet(
+                f"background-color: {bg_color}; color: white; border-radius: 4px; padding: 2px;"
+            )
+
+        def callback(stream, status_text):
+            self.emitter.status_updated.emit(stream, status_text)
+
+        def run_thread():
+            self.manager.check_statuses_once(callback)
+            # The background thread emits this signal when completely finished
+            self.emitter.check_finished.emit()
+
+        threading.Thread(target=run_thread, daemon=True).start()
+
+    @pyqtSlot(object, str)
+    def update_gui_status_slot(self, stream: Stream, status_text: str):
+        try:
+            idx = self.manager.streams.index(stream)
+            if idx in self.rows_gui_map:
+                lbl = self.rows_gui_map[idx]["status_lbl"]
+                lbl.setText(status_text)
+                bg_color = self.get_status_color(status_text)
+                lbl.setStyleSheet(
+                    f"background-color: {bg_color}; color: white; border-radius: 4px; padding: 2px;"
+                )
+        except ValueError:
+            pass
+
+    @pyqtSlot()
+    def on_check_finished(self):
+        """Safely resets the button on the main thread after background check finishes."""
+        self.check_btn.setEnabled(True)
+        self.check_btn.setText("Check Status")
+
+    def on_delete_clicked(self):
+        if self.selected_idx is None:
+            return
+        reply = QMessageBox.question(
+            self, "Confirm", "Delete this stream?", QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.manager.delete_stream(self.selected_idx)
+            self.refresh_list()
+
+    def add_category_dialog(self):
+        cat_name, ok = QInputDialog.getText(
+            self, "Add Category", "Enter new category name:"
+        )
+        if ok and cat_name:
+            self.manager.add_category(cat_name)
+            self.update_category_combobox()
+
+    def delete_category_dialog(self):
+        cat_name = self.cat_filter_cb.currentText()
+        if cat_name == "All":
+            QMessageBox.warning(self, "Warning", "Cannot delete 'All' category.")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm",
+            f"Delete category '{cat_name}'?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            self.manager.delete_category(cat_name)
+            self.update_category_combobox()
+            self.cat_filter_cb.setCurrentText("All")
+            self.refresh_list()
+
+    def open_add_dialog(self):
+        dialog = AddStreamDialog(self.manager, self)
+        if dialog.exec_():
+            name, url_str, cat_str = dialog.get_data()
+            if not name:
+                return
+
+            if url_str not in self.manager.urls:
+                self.manager.add_url(url_str)
+            if cat_str not in self.manager.categorys:
+                self.manager.add_category(cat_str)
+
+            new_stream = Stream(
+                name=name,
+                url_id=self.manager.urls[url_str],
+                category_id=self.manager.categorys[cat_str],
+            )
+            self.manager.add_stream(new_stream)
+
+            self.update_category_combobox()
+            self.refresh_list()
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+
+    window = StreamlinkGUI()
+    window.show()
+    sys.exit(app.exec_())
