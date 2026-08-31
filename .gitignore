@@ -1,1 +1,11 @@
-*__pycache__
+# Python cache files
+__pycache__/
+*.pyc
+
+# Packaging and build files
+build/
+dist/
+*.egg-info/
+
+# help files
+examples/
