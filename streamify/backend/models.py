@@ -1,9 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 from .config import CATEGORIES_KEY_NAME, STREAM_KEY_NAME
+
+
+class Quality(Enum):
+    audio_only = "audio_only"
+    _160p = "160p"
+    _360p = "360p"
+    _480p = "480p"
+    _720p60 = "720p60"
+    _1080p60 = "1080p60"
+    worst = "worst"
+    best = "best"
 
 
 @dataclass

@@ -65,3 +65,10 @@ class StreamDB:
             results.append((idx, s))
 
         return results
+
+    def get_stream(self, stream_id: int) -> Stream | None:
+        return (
+            self.media_cat.streams[stream_id]
+            if 0 <= stream_id < len(self.media_cat.streams)
+            else None
+        )
