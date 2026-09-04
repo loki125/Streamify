@@ -41,8 +41,5 @@ class StreamlinkManager:
     def check_qualities(self, stream_id: int) -> list[Quality]:
         return list(Quality)
 
-    def get_twitch_followers(
-        self,
-        oAuth_token: str,
-    ) -> list[Stream]:
-        pass
+    def get_twitch_followers(self, oAuth_token: str) -> list[Stream]:
+        return []
