@@ -10,7 +10,7 @@ from .models import MediaCatalog, Stream
 
 class StreamDB:
     def __init__(self):
-        self.media_cat: MediaCatalog = self.load_streams_json()
+        self._media_cat: MediaCatalog = self.load_streams_json()
 
     def load_streams_json(self) -> MediaCatalog:
         if os.path.exists(STREAM_LIST):
@@ -33,24 +33,24 @@ class StreamDB:
     def save_streams_json(self):
         if not os.path.exists(STREAM_LIST):
             with open(STREAM_LIST, "w") as data:
-                json.dump(self.media_cat.to_dict(), data)
+                json.dump(self._media_cat.to_dict(), data)
 
     def add_stream(self, stream: Stream):
-        self.media_cat.streams.append(stream)
+        self._media_cat.streams.append(stream)
 
     def remove_stream(self, stream_index: int) -> Stream | None:
         try:
-            stream = self.media_cat.streams.pop(stream_index)
+            stream = self._media_cat.streams.pop(stream_index)
             return stream
         except IndexError:
             return None
 
     def add_category(self, category: str):
-        self.media_cat.categories.append(category)
+        self._media_cat.categories.append(category)
 
     def remove_category(self, category: str) -> bool:
         try:
-            self.media_cat.categories.remove(category)
+            self._media_cat.categories.remove(category)
             return True
         except ValueError:
             return False
@@ -59,7 +59,7 @@ class StreamDB:
         results = []
         query_pattern = re.compile(query, re.IGNORECASE) if query else None
 
-        for idx, s in enumerate(self.media_cat.streams):
+        for idx, s in enumerate(self._media_cat.streams):
             if query_pattern and not query_pattern.search(s.name):
                 continue
             results.append((idx, s))
@@ -68,7 +68,18 @@ class StreamDB:
 
     def get_stream(self, stream_id: int) -> Stream | None:
         return (
-            self.media_cat.streams[stream_id]
-            if 0 <= stream_id < len(self.media_cat.streams)
+            self._media_cat.streams[stream_id]
+            if 0 <= stream_id < len(self._media_cat.streams)
             else None
         )
+
+    def get_all_streams(self) -> list[Stream]:
+        return self._media_cat.streams
+
+    def update_stream_status(self, stream_id: int, is_live: bool) -> bool:
+        if 0 <= stream_id < len(self._media_cat.streams):
+            current_status = self._media_cat.streams[stream_id].live
+            if current_status != is_live:
+                self._media_cat.streams[stream_id].live = is_live
+                return True
+        return False

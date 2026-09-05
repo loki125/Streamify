@@ -19,6 +19,16 @@ class Quality(Enum):
 
 
 @dataclass
+class Settings:
+    player: str
+    chat_active: bool
+    pause_start_key: str
+    mute_unmute_key: str
+    volume_num: int
+    default_quality: str
+
+
+@dataclass
 class Stream:
     name: str
     url: str
