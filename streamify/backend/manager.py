@@ -8,8 +8,8 @@ import mpv  # pyright: ignore[reportMissingTypeStubs]
 from streamlink.exceptions import NoPluginError, PluginError, StreamlinkError
 from streamlink.session.session import Streamlink
 
-from .database import StreamDB
-from .models import Quality, Stream
+from .core.database import StreamDB
+from .core.models import Quality, Stream
 
 
 class StreamlinkManager:
@@ -114,3 +114,15 @@ class StreamlinkManager:
             return list(streams.keys())
         except (StreamlinkError, OSError):
             return []
+
+    def add_stream(self, stream: Stream) -> None:
+        self.database.add_stream(stream)
+        self._check_single_status(stream)
+
+    def remove_stream(self, stream_id: int) -> None:
+        _ = self.database.remove_stream(stream_id)
+        if stream_id in self.active_players:
+            self.stop_stream(stream_id)
+
+    def query_streams(self) -> list[Stream]:
+        return self.database.get_all_streams()
