@@ -8,14 +8,12 @@ import mpv  # pyright: ignore[reportMissingTypeStubs]
 from streamlink.exceptions import NoPluginError, PluginError, StreamlinkError
 from streamlink.session.session import Streamlink
 
-from .config import DEFAULT_PLAYER
 from .database import StreamDB
 from .models import Quality, Stream
 
 
 class StreamlinkManager:
-    def __init__(self, player: str = DEFAULT_PLAYER) -> None:
-        self.player_type: str = player
+    def __init__(self) -> None:
         self.session: Streamlink = Streamlink()
         self.database: StreamDB = StreamDB()
 
