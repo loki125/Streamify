@@ -35,8 +35,10 @@ class StreamDB:
             with open(STREAM_LIST, "w") as data:
                 json.dump(self._media_cat.to_dict(), data)
 
-    def add_stream(self, stream: Stream):
+    def add_stream(self, stream: Stream) -> int:
         self._media_cat.streams.append(stream)
+
+        return len(self._media_cat.streams)
 
     def remove_stream(self, stream_index: int) -> Stream | None:
         try:

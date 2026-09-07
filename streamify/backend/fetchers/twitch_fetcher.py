@@ -5,7 +5,7 @@ from typing import Any
 import requests
 from typing_extensions import override
 
-from ..models import Stream
+from ..core.models import Stream
 from .base_fetcher import BaseFetcher
 
 TWITCH_API = "https://api.twitch.tv/helix"

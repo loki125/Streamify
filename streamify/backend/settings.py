@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .config import SETTINGS_FILE
-from .models import Quality, Settings
+from .core.config import SETTINGS_FILE
+from .core.models import Quality, Settings
 
 
 class SettingsConfig:

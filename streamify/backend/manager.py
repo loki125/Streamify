@@ -116,8 +116,10 @@ class StreamlinkManager:
             return []
 
     def add_stream(self, stream: Stream) -> None:
-        self.database.add_stream(stream)
-        self._check_single_status(stream)
+        stream_id = self.database.add_stream(stream)
+        stream_status = self._check_single_status(stream)
+
+        _ = self.database.update_stream_status(stream_id, stream_status)
 
     def remove_stream(self, stream_id: int) -> None:
         _ = self.database.remove_stream(stream_id)

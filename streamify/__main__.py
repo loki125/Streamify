@@ -1,17 +1,16 @@
 import sys
 
-from PyQt5.QtWidgets import QApplication
+from PyQt6.QtCore.QtWidgets import QApplication
 
-from streamify.ui.main_window import StreamlinkGUI
-
-
-def main():
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-    window = StreamlinkGUI()
-    window.show()
-    sys.exit(app.exec_())
-
+from .ui.main_window import MainWindow
+from .ui.utils.config import load_stylesheet
 
 if __name__ == "__main__":
-    main()
+    app = QApplication(sys.argv)
+
+    # Load your dark.css!
+    load_stylesheet(app, theme_name="dark")
+
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
