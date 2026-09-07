@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore.QtWidgets import QInputDialog, QMessageBox, QWidget
+from PyQt6.QtWidgets import QInputDialog, QMessageBox, QWidget
 
 from streamify.backend.core.models import Quality
 

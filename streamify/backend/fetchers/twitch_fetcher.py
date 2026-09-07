@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, override
 
 import requests
-from typing_extensions import override
 
 from ..core.models import Stream
 from .base_fetcher import BaseFetcher
@@ -25,7 +24,6 @@ class TwitchFetcher(BaseFetcher):
             "Client-Id": self.client_id,
             "Authorization": f"Bearer {self.access_token}",
         }
-        # Resolve user_id if not explicitly passed
         self.user_id: str | None = user_id or self._get_current_user_id()
 
     def _get_current_user_id(self) -> str:

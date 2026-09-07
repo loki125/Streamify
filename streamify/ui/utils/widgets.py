@@ -1,10 +1,11 @@
+# pyright: reportUnknownMemberType=none
 from __future__ import annotations
 
-from typing import Any
+from typing import override
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtCore.QtGui import QMouseEvent
-from PyQt6.QtCore.QtWidgets import (
+from PyQt6.QtGui import QMouseEvent
+from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -13,11 +14,13 @@ from PyQt6.QtCore.QtWidgets import (
     QWidget,
 )
 
+from streamify.backend.core.models import Stream
+
 
 class VideoPlayerFrame(QFrame):
     """A designated window for MPV to attach to using its Window ID (wid)."""
 
-    clicked: Any = pyqtSignal()
+    clicked: pyqtSignal = pyqtSignal()
 
     def __init__(self, player_id: int) -> None:
         super().__init__()
@@ -25,18 +28,16 @@ class VideoPlayerFrame(QFrame):
         self.active_stream_id: int | None = None
         self.setStyleSheet("background-color: black; border: 1px solid #333;")
 
-        self.layout = QVBoxLayout(self)
-        self.label = QLabel(f"Player {self.player_id}\nIdle")
+        layout = QVBoxLayout(self)
+        self.label: QLabel = QLabel(f"Player {self.player_id}\nIdle")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setStyleSheet("color: white;")
-        self.layout.addWidget(self.label)
+        layout.addWidget(self.label)
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        click_sig: Any = self.clicked
-        click_sig.emit(
-            self
-        )  # Emit 'self' so the main window knows WHICH frame was clicked
-        super().mousePressEvent(event)
+    @override
+    def mousePressEvent(self, a0: QMouseEvent | None) -> None:
+        self.clicked.emit(self)
+        super().mousePressEvent(a0)
 
     def get_win_id(self) -> int:
         return int(self.winId())
@@ -53,23 +54,22 @@ class VideoPlayerFrame(QFrame):
 class StreamListItemWidget(QWidget):
     """Custom widget for each row in the stream list sidebar."""
 
-    # Signals now emit (index, stream_object)
-    launch_requested = pyqtSignal(int, object)
-    remove_requested = pyqtSignal(int, object)
+    launch_requested: pyqtSignal = pyqtSignal(int, object)
+    remove_requested: pyqtSignal = pyqtSignal(int, object)
 
-    def __init__(self, stream: Any, stream_id: int) -> None:
+    def __init__(self, stream: Stream, stream_id: int) -> None:
         super().__init__()
-        self.stream = stream
-        self.stream_id = stream_id  # Save the list index!
+        self.stream: Stream = stream
+        self.stream_id: int = stream_id
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
 
-        self.status_lbl = QLabel("⚫")
-        self.name_lbl = QLabel(getattr(stream, "name", "Unknown Stream"))
+        self.status_lbl: QLabel = QLabel("⚫")
+        self.name_lbl: QLabel = QLabel(getattr(stream, "name", "Unknown Stream"))
 
-        self.launch_btn = QPushButton("Launch")
-        self.remove_btn = QPushButton("X")
+        self.launch_btn: QPushButton = QPushButton("Launch")
+        self.remove_btn: QPushButton = QPushButton("X")
         self.remove_btn.setFixedWidth(30)
 
         layout.addWidget(self.status_lbl)
@@ -78,10 +78,10 @@ class StreamListItemWidget(QWidget):
         layout.addWidget(self.remove_btn)
 
         # Emit both the index (stream_id) and the stream object
-        self.launch_btn.clicked.connect(
+        _ = self.launch_btn.clicked.connect(
             lambda: self.launch_requested.emit(self.stream_id, self.stream)
         )
-        self.remove_btn.clicked.connect(
+        _ = self.remove_btn.clicked.connect(
             lambda: self.remove_requested.emit(self.stream_id, self.stream)
         )
 
