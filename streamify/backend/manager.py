@@ -116,7 +116,3 @@ class StreamlinkManager:
             return list(streams.keys())
         except (StreamlinkError, OSError):
             return []
-
-    def get_twitch_followers(self, oAuth_token: str) -> list[Stream]:
-        """Placeholder for Twitch Helix API integration."""
-        return []

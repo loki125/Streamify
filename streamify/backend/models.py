@@ -20,12 +20,30 @@ class Quality(Enum):
 
 @dataclass
 class Settings:
-    player: str
     chat_active: bool
     pause_start_key: str
     mute_unmute_key: str
     volume_num: int
-    default_quality: str
+    default_quality: Quality
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Settings:
+        return cls(
+            chat_active=data["chat_active"],
+            pause_start_key=data["pause_start_key"],
+            mute_unmute_key=data["mute_unmute_key"],
+            volume_num=data["volume_num"],
+            default_quality=Quality(data["default_quality"]),  # "best" -> Quality.best
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "chat_active": self.chat_active,
+            "pause_start_key": self.pause_start_key,
+            "mute_unmute_key": self.mute_unmute_key,
+            "volume_num": self.volume_num,
+            "default_quality": self.default_quality.value,  # Quality.best -> "best"
+        }
 
 
 @dataclass
@@ -37,14 +55,19 @@ class Stream:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Stream:
-        return cls(name=data["name"], url=data["url"], category_id=data["category_id"])
+        return cls(
+            name=data["name"],
+            url=data["url"],
+            category_id=data.get("category_id", 0),
+            live=data.get("live", False),
+        )
 
-    @classmethod
-    def to_dict(cls) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
-            "name": cls.name,
-            "url": cls.url,
-            "category_id": cls.category_id,
+            "name": self.name,
+            "url": self.url,
+            "category_id": self.category_id,
+            "live": self.live,
         }
 
 
