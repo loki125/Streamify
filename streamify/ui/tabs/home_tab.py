@@ -78,7 +78,7 @@ class HomeTab(QWidget):
         self.stream_list_widget: QListWidget = QListWidget()
         sidebar_layout.addWidget(self.stream_list_widget)
 
-        self.btn_add_stream: QPushButton = QPushButton("+")
+        self.btn_add_stream: QPushButton = QPushButton("✚")
         self.btn_add_stream.setToolTip("Add new stream")
         sidebar_layout.addWidget(self.btn_add_stream)
 

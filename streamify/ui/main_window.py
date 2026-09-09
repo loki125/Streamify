@@ -38,9 +38,9 @@ class MainWindow(QMainWindow):
         self.settings_tab: SettingsTab = SettingsTab()
         self.twitch_tab: TwitchTab = TwitchTab()
 
-        _ = self.tabs.addTab(self.home_tab, "Home")
-        _ = self.tabs.addTab(self.settings_tab, "Settings")
-        _ = self.tabs.addTab(self.twitch_tab, "Twitch")
+        _ = self.tabs.addTab(self.home_tab, "☰ Home")
+        _ = self.tabs.addTab(self.settings_tab, "⚙️ Settings")
+        _ = self.tabs.addTab(self.twitch_tab, "☕︎ Twitch")
 
     @override
     def closeEvent(self, a0: QCloseEvent | None) -> None:

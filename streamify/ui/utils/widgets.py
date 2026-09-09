@@ -61,10 +61,10 @@ class StreamListItemWidget(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
 
-        self.status_lbl: QLabel = QLabel("⚫")
+        self.status_lbl: QLabel = QLabel("-")
         self.name_lbl: QLabel = QLabel(self.stream.name)
 
-        self.launch_btn: QPushButton = QPushButton("Launch")
+        self.launch_btn: QPushButton = QPushButton("▶︎ Launch")
 
         layout.addWidget(self.status_lbl)
         layout.addWidget(self.name_lbl, stretch=1)
@@ -80,10 +80,10 @@ class StreamListItemWidget(QWidget):
 
         menu = QMenu(self)
 
-        edit_action = menu.addAction("Edit")
-        check_action = menu.addAction("Check Status")
+        edit_action = menu.addAction("✍︎ Edit")
+        check_action = menu.addAction("⚫ Check Status")
         _ = menu.addSeparator()
-        remove_action = menu.addAction("Remove")
+        remove_action = menu.addAction("❌ Remove")
 
         action = menu.exec(a0.globalPos())
 
@@ -99,8 +99,10 @@ class StreamListItemWidget(QWidget):
 
     def update_status(self, is_live: bool) -> None:
         if is_live:
-            self.status_lbl.setText("🟢")
+            self.status_lbl.setText("◉")
+            self.status_lbl.setStyleSheet("color: green")
             self.status_lbl.setToolTip("Live")
         else:
-            self.status_lbl.setText("🔴")
+            self.status_lbl.setText("⊝")
+            self.status_lbl.setStyleSheet("color: grey")
             self.status_lbl.setToolTip("Offline")
