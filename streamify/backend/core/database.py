@@ -60,8 +60,8 @@ class StreamDB:
         except ValueError:
             return False
 
-    def search_stream(self, query: str) -> list[Stream]:
-        results = []
+    def search_stream(self, query: str) -> list[tuple[int, Stream]]:
+        results: list[tuple[int, Stream]] = []
         query_pattern = re.compile(query, re.IGNORECASE) if query else None
 
         for idx, s in enumerate(self._media_cat.streams):

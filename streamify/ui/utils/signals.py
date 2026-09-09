@@ -1,60 +1,42 @@
 from __future__ import annotations
 
-from typing import override
+from typing import Any, override
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from streamify.backend.core.models import Stream
-from streamify.backend.fetcher_factory import FetcherFactory
 from streamify.backend.manager import StreamlinkManager
 
 
-class StatusCheckerWorker(QThread):
-    finished = pyqtSignal(dict)
-
-    def __init__(self, manager: StreamlinkManager) -> None:
-        super().__init__()
-        self.manager: StreamlinkManager = manager
-
-    @override
-    def run(self) -> None:
-        statuses = self.manager.check_statuses()
-        self.finished.emit(statuses)
+def safe_connect(signal: Any, slot: Any) -> None:
+    """Connects a PyQt signal to a slot, silencing pyright warnings."""
+    signal.connect(slot)
 
 
-class QualityCheckWorker(QThread):
-    """Fetches available qualities in the background to prevent UI freezes."""
+class LaunchPrecheckWorker(QThread):
+    """Handles the exact workflow: Check status -> If Live -> Check Qualities."""
 
-    finished = pyqtSignal(list, int, object)
+    is_offline: pyqtSignal = pyqtSignal(str)
+    ready_to_launch: pyqtSignal = pyqtSignal(list, int, object)
 
     def __init__(
-        self, manager: StreamlinkManager, stream_id: int, stream: Stream
+        self, manager: StreamlinkManager, stream_id: int, stream_obj: Stream
     ) -> None:
         super().__init__()
         self.manager: StreamlinkManager = manager
         self.stream_id: int = stream_id
-        self.stream: Stream = stream
+        self.stream_obj: Stream = stream_obj
 
     @override
     def run(self) -> None:
+        is_live = self.manager.check_single_status(self.stream_obj)
+
+        if not is_live:
+            sig_off: Any = self.is_offline
+            sig_off.emit(self.stream_obj.name)
+            return
+
         qualities = self.manager.check_qualities(self.stream_id)
-        self.finished.emit(qualities, self.stream_id, self.stream)
 
-
-class FetchFollowsWorker(QThread):
-    finished = pyqtSignal(list)
-    error = pyqtSignal(str)
-
-    def __init__(self, fetcher_factory: type[FetcherFactory], platform: str) -> None:
-        super().__init__()
-        self.fetcher_factory: type[FetcherFactory] = fetcher_factory
-        self.platform: str = platform
-
-    @override
-    def run(self) -> None:
-        try:
-            fetcher = self.fetcher_factory.get_fetcher(self.platform)
-            streams = fetcher.fetch_follows()
-            self.finished.emit(streams)
-        except Exception as e:
-            self.error.emit(str(e))
+        sig_ready: Any = self.ready_to_launch
+        sig_ready.emit(qualities, self.stream_id, self.stream_obj)

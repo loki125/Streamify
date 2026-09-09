@@ -1,8 +1,10 @@
+# pyright: reportUnknownMemberType=none
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable
+from typing import Any
 
 import mpv  # pyright: ignore[reportMissingTypeStubs]
 from streamlink.exceptions import NoPluginError, PluginError, StreamlinkError
@@ -85,22 +87,25 @@ class StreamlinkManager:
             player.terminate()
             del self.active_players[stream_id]
 
-    def _check_single_status(self, stream_obj: Stream) -> bool:
+    def check_single_status(self, stream_obj: Stream) -> bool:
         try:
             streams = self.session.streams(stream_obj.url)
             return bool(streams)
         except (StreamlinkError, OSError):
             return False
 
+    def set_single_status(self, stream_index: int, is_live: bool) -> bool:
+        return self.database.update_stream_status(stream_index, is_live)
+
     def check_statuses(self) -> dict[int, bool]:
         all_streams = self.database.get_all_streams()
         changed_statuses: dict[int, bool] = {}
 
         with ThreadPoolExecutor(max_workers=10) as executor:
-            results = executor.map(self._check_single_status, all_streams)
+            results = executor.map(self.check_single_status, all_streams)
 
             for index, is_live in enumerate(results):
-                if self.database.update_stream_status(index, is_live):
+                if self.set_single_status(index, is_live):
                     changed_statuses[index] = True
 
         return changed_statuses
@@ -117,7 +122,7 @@ class StreamlinkManager:
 
     def add_stream(self, stream: Stream) -> None:
         stream_id = self.database.add_stream(stream)
-        stream_status = self._check_single_status(stream)
+        stream_status = self.check_single_status(stream)
 
         _ = self.database.update_stream_status(stream_id, stream_status)
 
@@ -126,5 +131,11 @@ class StreamlinkManager:
         if stream_id in self.active_players:
             self.stop_stream(stream_id)
 
-    def query_streams(self) -> list[Stream]:
-        return self.database.get_all_streams()
+    def query_streams(self, query: str | None = None) -> list[tuple[int, Stream]]:
+        if query is None:
+            stream_list: list[tuple[int, Stream]] = [
+                (i, s) for i, s in enumerate(self.database.get_all_streams())
+            ]
+        else:
+            stream_list = self.database.search_stream(query)
+        return stream_list
