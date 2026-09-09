@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QApplication
 from .ui.main_window import MainWindow
 
 # from .ui.utils.config import load_stylesheet
-# enojis : ⟳ ✚ ⌨
+# enojis : ⟳ ✚ ⌨ ⚙️ ☾☼
 
 
 def main() -> None:

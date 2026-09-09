@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLineEdit,
@@ -22,7 +22,13 @@ from streamify.backend.manager import StreamlinkManager
 from streamify.backend.settings import SettingsConfig
 
 from ..utils import dialogs
-from ..utils.signals import LaunchPrecheckWorker, safe_connect
+from ..utils.dialogs import StreamEditDialog
+from ..utils.signals import (
+    GlobalStatusWorker,
+    LaunchPrecheckWorker,
+    SingleStatusWorker,
+    safe_connect,
+)
 from ..utils.widgets import StreamListItemWidget, StreamVideoWindow
 
 
@@ -36,7 +42,7 @@ class HomeTab(QWidget):
         self.manager: StreamlinkManager = manager
         self.settings_config: SettingsConfig = settings_config
 
-        self.active_workers: list[LaunchPrecheckWorker] = []
+        self.active_workers: list[QThread] = []
 
         safe_connect(self.stream_error_signal, self.show_stream_error)
         self.init_ui()
@@ -46,38 +52,47 @@ class HomeTab(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        layout.addWidget(splitter)
+        self.splitter: QSplitter = QSplitter(Qt.Orientation.Horizontal)
+        layout.addWidget(self.splitter)
 
         # ==================== LEFT SIDEBAR ====================
-        sidebar_widget = QWidget()
-        sidebar_layout = QVBoxLayout(sidebar_widget)
+        self.sidebar_widget: QWidget = QWidget(self.splitter)
+        sidebar_layout = QVBoxLayout(self.sidebar_widget)
         sidebar_layout.setContentsMargins(5, 5, 5, 5)
 
-        # Search Bar Area
         search_layout = QHBoxLayout()
         self.search_input: QLineEdit = QLineEdit()
         self.search_input.setPlaceholderText("Search streams...")
+
         self.btn_search: QPushButton = QPushButton("⌕")
         self.btn_search.setFixedWidth(40)
 
+        self.btn_refresh: QPushButton = QPushButton("↻")
+        self.btn_refresh.setFixedWidth(40)
+
         search_layout.addWidget(self.search_input)
         search_layout.addWidget(self.btn_search)
+        search_layout.addWidget(self.btn_refresh)
         sidebar_layout.addLayout(search_layout)
 
         self.stream_list_widget: QListWidget = QListWidget()
         sidebar_layout.addWidget(self.stream_list_widget)
 
-        splitter.addWidget(sidebar_widget)
+        self.btn_add_stream: QPushButton = QPushButton("+")
+        self.btn_add_stream.setToolTip("Add new stream")
+        sidebar_layout.addWidget(self.btn_add_stream)
+
+        safe_connect(self.btn_refresh.clicked, self.trigger_global_status_check)
+        safe_connect(self.btn_add_stream.clicked, self.open_add_dialog)
 
         # ==================== RIGHT VIEWING AREA ====================
         self.mdi_area: QMdiArea = QMdiArea()
         self.mdi_area.setViewMode(QMdiArea.ViewMode.TabbedView)
         self.mdi_area.setTabsClosable(True)
 
-        splitter.addWidget(self.mdi_area)
+        self.splitter.addWidget(self.mdi_area)
 
-        splitter.setSizes([250, 950])
+        self.splitter.setSizes([250, 950])
 
         safe_connect(self.btn_search.clicked, self.perform_search)
         safe_connect(self.search_input.returnPressed, self.perform_search)
@@ -102,6 +117,11 @@ class HomeTab(QWidget):
             widget = StreamListItemWidget(stream, stream_id=index)
 
             safe_connect(widget.launch_requested, self.start_launch_workflow)
+            safe_connect(widget.edit_requested, self.open_edit_dialog)
+            safe_connect(
+                widget.status_check_requested, self.trigger_single_status_check
+            )
+            safe_connect(widget.remove_requested, self.remove_stream)
 
             widget.update_status(stream.live)
 
@@ -157,3 +177,101 @@ class HomeTab(QWidget):
     def close_all_streams(self) -> None:
         """Closes all video windows, which triggers their stop_stream logic."""
         self.mdi_area.closeAllSubWindows()
+
+    def _resolve_category_id(self, category_str: str) -> int:
+        """Helper to convert string to ID, creating a new category if needed."""
+        if not category_str:
+            return 0
+
+        cats = self.manager.get_all_categories()
+        if category_str in cats:
+            return cats.index(category_str)
+
+        self.manager.add_category(category_str)
+        new_cats = self.manager.get_all_categories()
+        return new_cats.index(category_str)
+
+    def open_add_dialog(self) -> None:
+        """Handles the '+' button."""
+        dialog = StreamEditDialog(self, self.manager)
+        if dialog.exec():
+            name, url, category_str = dialog.get_data()
+            if name and url:
+                cat_id = self._resolve_category_id(category_str)
+                self.manager.add_stream(name, url, cat_id)
+                self.refresh_stream_list()
+
+    def open_edit_dialog(self, stream_id: int, stream: Stream) -> None:
+        dialog = StreamEditDialog(self, self.manager, stream)
+        if dialog.exec():
+            name, url, category_str = dialog.get_data()
+            if name and url:
+                cat_id = self._resolve_category_id(category_str)
+                self.manager.update_stream(stream_id, name, url, cat_id)
+                self.refresh_stream_list()
+
+    def remove_stream(self, stream_id: int, _stream: Stream) -> None:
+        self.manager.remove_stream(stream_id)
+        self.refresh_stream_list()
+
+    # --- STATUS CHECKING ---
+
+    def trigger_global_status_check(self) -> None:
+        self.btn_refresh.setEnabled(False)
+
+        worker = GlobalStatusWorker(self.manager)
+        self.active_workers.append(worker)
+
+        safe_connect(worker.checked_finished, self.on_global_statuses_checked)
+        safe_connect(
+            worker.checked_finished,
+            lambda: (
+                self.worker_cleanup(worker),
+                self.btn_refresh.setEnabled(True),
+            ),
+        )
+        worker.start()
+
+    def on_global_statuses_checked(self, statuses: dict[int, bool]) -> None:
+        for i in range(self.stream_list_widget.count()):
+            item = self.stream_list_widget.item(i)
+            if item is None:
+                continue
+
+            widget = self.stream_list_widget.itemWidget(item)
+            if (
+                isinstance(widget, StreamListItemWidget)
+                and widget.stream_id in statuses
+            ):
+                widget.update_status(statuses[widget.stream_id])
+
+    def trigger_single_status_check(self, stream_id: int, stream: Stream) -> None:
+        """Handles Right-Click -> Check Status."""
+        worker = SingleStatusWorker(self.manager, stream_id, stream)
+        self.active_workers.append(worker)
+
+        safe_connect(worker.checked_finished, self.on_single_status_checked)
+
+        safe_connect(worker.checked_finished, self.worker_cleanup)
+        worker.start()
+
+    def on_single_status_checked(self, stream_id: int, is_live: bool) -> None:
+        """Saves status to backend and updates that one specific dot."""
+        _ = self.manager.set_single_status(stream_id, is_live)
+
+        for i in range(self.stream_list_widget.count()):
+            item = self.stream_list_widget.item(i)
+            if item is None:
+                continue
+
+            widget = self.stream_list_widget.itemWidget(item)
+            if (
+                isinstance(widget, StreamListItemWidget)
+                and widget.stream_id == stream_id
+            ):
+                widget.update_status(is_live)
+                break
+
+    def worker_cleanup(self, worker: QThread) -> None:
+        if worker in self.active_workers:
+            self.active_workers.remove(worker)

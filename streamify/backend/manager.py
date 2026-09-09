@@ -10,6 +10,7 @@ import mpv  # pyright: ignore[reportMissingTypeStubs]
 from streamlink.exceptions import NoPluginError, PluginError, StreamlinkError
 from streamlink.session.session import Streamlink
 
+from .core.config import DEFAULT_CATEGORY_ID
 from .core.database import StreamDB
 from .core.models import Quality, Stream
 
@@ -120,11 +121,21 @@ class StreamlinkManager:
         except (StreamlinkError, OSError):
             return []
 
-    def add_stream(self, stream: Stream) -> None:
-        stream_id = self.database.add_stream(stream)
-        stream_status = self.check_single_status(stream)
+    def add_stream(
+        self, name: str, url: str, category_id: int = DEFAULT_CATEGORY_ID
+    ) -> None:
+        new_stream: Stream = Stream(name=name, url=url, category_id=category_id)
+
+        stream_id = self.database.add_stream(new_stream)
+        stream_status = self.check_single_status(new_stream)
 
         _ = self.database.update_stream_status(stream_id, stream_status)
+
+    def get_all_categories(self) -> list[str]:
+        return self.database.get_all_categories()
+
+    def add_category(self, category: str) -> None:
+        self.database.add_category(category)
 
     def remove_stream(self, stream_id: int) -> None:
         _ = self.database.remove_stream(stream_id)
@@ -139,3 +150,12 @@ class StreamlinkManager:
         else:
             stream_list = self.database.search_stream(query)
         return stream_list
+
+    def update_stream(
+        self, stream_id: int, name: str, url: str, category_id: int
+    ) -> None:
+        stream = self.database.get_stream(stream_id)
+        if stream:
+            stream.name = name
+            stream.url = url
+            stream.category_id = category_id

@@ -81,6 +81,9 @@ class StreamDB:
     def get_all_streams(self) -> list[Stream]:
         return self._media_cat.streams
 
+    def get_all_categories(self) -> list[str]:
+        return self._media_cat.categories
+
     def update_stream_status(self, stream_id: int, is_live: bool) -> bool:
         if 0 <= stream_id < len(self._media_cat.streams):
             current_status = self._media_cat.streams[stream_id].live

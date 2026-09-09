@@ -4,12 +4,13 @@ from __future__ import annotations
 from typing import Any, override
 
 from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtGui import QCloseEvent
+from PyQt6.QtGui import QCloseEvent, QContextMenuEvent
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QMdiSubWindow,
+    QMenu,
     QPushButton,
     QWidget,
 )
@@ -48,6 +49,10 @@ class StreamVideoWindow(QMdiSubWindow):
 class StreamListItemWidget(QWidget):
     launch_requested: pyqtSignal = pyqtSignal(int, object)
 
+    edit_requested: pyqtSignal = pyqtSignal(int, object)
+    status_check_requested: pyqtSignal = pyqtSignal(int, object)
+    remove_requested: pyqtSignal = pyqtSignal(int, object)
+
     def __init__(self, stream: Stream, stream_id: int) -> None:
         super().__init__()
         self.stream: Stream = stream
@@ -67,6 +72,30 @@ class StreamListItemWidget(QWidget):
 
         sig: Any = self.launch_btn.clicked
         sig.connect(lambda: self.launch_requested.emit(self.stream_id, self.stream))
+
+    @override
+    def contextMenuEvent(self, a0: QContextMenuEvent | None) -> None:
+        if not a0:
+            return
+
+        menu = QMenu(self)
+
+        edit_action = menu.addAction("Edit")
+        check_action = menu.addAction("Check Status")
+        _ = menu.addSeparator()
+        remove_action = menu.addAction("Remove")
+
+        action = menu.exec(a0.globalPos())
+
+        if action == edit_action:
+            sig: Any = self.edit_requested
+            sig.emit(self.stream_id, self.stream)
+        elif action == check_action:
+            sig2: Any = self.status_check_requested
+            sig2.emit(self.stream_id, self.stream)
+        elif action == remove_action:
+            sig3: Any = self.remove_requested
+            sig3.emit(self.stream_id, self.stream)
 
     def update_status(self, is_live: bool) -> None:
         if is_live:

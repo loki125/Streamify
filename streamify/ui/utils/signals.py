@@ -40,3 +40,37 @@ class LaunchPrecheckWorker(QThread):
 
         sig_ready: Any = self.ready_to_launch
         sig_ready.emit(qualities, self.stream_id, self.stream_obj)
+
+
+class GlobalStatusWorker(QThread):
+    """Checks the status of all streams (for the refresh button)."""
+
+    checked_finished: pyqtSignal = pyqtSignal(dict)
+
+    def __init__(self, manager: StreamlinkManager) -> None:
+        super().__init__()
+        self.manager: StreamlinkManager = manager
+
+    @override
+    def run(self) -> None:
+        statuses = self.manager.check_statuses()
+        self.checked_finished.emit(statuses)
+
+
+class SingleStatusWorker(QThread):
+    """Checks the status of a single stream (from right-click menu)."""
+
+    checked_finished: pyqtSignal = pyqtSignal(int, bool)
+
+    def __init__(
+        self, manager: StreamlinkManager, stream_id: int, stream_obj: Any
+    ) -> None:
+        super().__init__()
+        self.manager: StreamlinkManager = manager
+        self.stream_id: int = stream_id
+        self.stream_obj: Stream = stream_obj
+
+    @override
+    def run(self) -> None:
+        is_live = self.manager.check_single_status(self.stream_obj)
+        self.checked_finished.emit(self.stream_id, is_live)

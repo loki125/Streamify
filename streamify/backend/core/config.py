@@ -7,3 +7,4 @@ SETTINGS_FILE: str = os.path.expanduser(f"~/.local/share/{APP_NAME}/settings.jso
 STREAM_KEY_NAME = "streams"
 CATEGORIES_KEY_NAME = "categories"
 DEFAULT_CATEGORY = "Default"
+DEFAULT_CATEGORY_ID = 0
