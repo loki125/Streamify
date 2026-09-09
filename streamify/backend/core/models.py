@@ -83,9 +83,8 @@ class MediaCatalog:
             categories=data.get(CATEGORIES_KEY_NAME, []),
         )
 
-    @classmethod
-    def to_dict(cls) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
-            STREAM_KEY_NAME: [s.to_dict() for s in cls.streams],
-            CATEGORIES_KEY_NAME: cls.categories,
+            STREAM_KEY_NAME: [s.to_dict() for s in self.streams],
+            CATEGORIES_KEY_NAME: self.categories,
         }

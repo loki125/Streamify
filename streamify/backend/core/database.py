@@ -13,14 +13,17 @@ class StreamDB:
         self._media_cat: MediaCatalog = self.load_streams_json()
 
     def load_streams_json(self) -> MediaCatalog:
-        if os.path.exists(STREAM_LIST):
-            media_cat: MediaCatalog
+        try:
             with open(STREAM_LIST, "r") as f:
-                json_data = json.load(f)
-                media_cat = MediaCatalog.from_dict(json_data)
-        else:
-            media_cat = self.init_streams_json()
-        return media_cat
+                content = f.read().strip()
+                if not content:
+                    return self.init_streams_json()
+
+                data = json.loads(content)
+                return MediaCatalog.from_dict(data)
+
+        except (FileNotFoundError, json.JSONDecodeError):
+            return self.init_streams_json()
 
     def init_streams_json(self) -> MediaCatalog:
         defualt_catalog = MediaCatalog(streams=[], categories=[DEFAULT_CATEGORY])
