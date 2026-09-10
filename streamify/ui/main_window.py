@@ -11,7 +11,6 @@ from streamify.backend.settings import SettingsConfig
 
 from .tabs.home_tab import HomeTab
 from .tabs.settings_tab import SettingsTab
-from .tabs.twitch_tab import TwitchTab
 
 
 class MainWindow(QMainWindow):
@@ -35,12 +34,12 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.tabs)
 
         self.home_tab: HomeTab = HomeTab(self.manager, self.settings_config)
-        self.settings_tab: SettingsTab = SettingsTab()
-        self.twitch_tab: TwitchTab = TwitchTab()
+        self.settings_tab: SettingsTab = SettingsTab(
+            self.manager, self.settings_config, self
+        )
 
         _ = self.tabs.addTab(self.home_tab, "☰ Home")
         _ = self.tabs.addTab(self.settings_tab, "⚙️ Settings")
-        _ = self.tabs.addTab(self.twitch_tab, "☕︎ Twitch")
 
     @override
     def closeEvent(self, a0: QCloseEvent | None) -> None:

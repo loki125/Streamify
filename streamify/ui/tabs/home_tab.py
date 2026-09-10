@@ -117,6 +117,9 @@ class HomeTab(QWidget):
                 widget.status_check_requested, self.trigger_single_status_check
             )
             safe_connect(widget.remove_requested, self.remove_stream)
+            safe_connect(
+                widget.custom_settings_requested, self.open_custom_settings_dialog
+            )
 
             widget.update_status(stream.live)
 
@@ -222,6 +225,17 @@ class HomeTab(QWidget):
     def remove_stream(self, stream_id: int, _stream: Stream) -> None:
         self.manager.remove_stream(stream_id)
         self.refresh_stream_list()
+
+    def open_custom_settings_dialog(self, stream_id: int, _stream: Stream) -> None:
+        settings = self.settings_config.get_settings()
+        current_custom = settings.custom_settings.get(stream_id)
+
+        dialog = dialogs.CustomStreamSettingsDialog(self, current_custom, settings)
+
+        if dialog.exec():
+            new_custom = dialog.get_custom_settings()
+            settings.custom_settings[stream_id] = new_custom
+            self.settings_config.save_settings(settings)
 
     # --- STATUS CHECKING ---
 

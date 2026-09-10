@@ -51,6 +51,9 @@ class StreamDB:
         except IndexError:
             return None
 
+    def remove_all_streams(self) -> None:
+        self._media_cat.streams.clear()
+
     def add_category(self, category: str):
         self._media_cat.categories.append(category)
 

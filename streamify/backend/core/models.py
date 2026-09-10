@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
@@ -18,22 +18,34 @@ class Quality(Enum):
     best = "best"
 
 
+class Theme(Enum):
+    dark = "dark"
+    light = "light"
+
+
 @dataclass
-class Settings:
-    chat_active: bool
-    pause_start_key: str
-    mute_unmute_key: str
-    volume_num: int
-    default_quality: Quality
+class CustomSettings:
+    chat_active: bool = False
+    pause_start_key: str = "space"
+    mute_unmute_key: str = "m"
+    volume_num: int = 50
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Settings:
+    def default(cls, settings: Settings) -> CustomSettings:
         return cls(
-            chat_active=data["chat_active"],
-            pause_start_key=data["pause_start_key"],
-            mute_unmute_key=data["mute_unmute_key"],
-            volume_num=data["volume_num"],
-            default_quality=Quality(data["default_quality"]),  # "best" -> Quality.best
+            chat_active=settings.default_chat_active,
+            pause_start_key=settings.default_pause_start_key,
+            mute_unmute_key=settings.default_mute_unmute_key,
+            volume_num=settings.default_volume_num,
+        )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CustomSettings:
+        return cls(
+            chat_active=data.get("chat_active", False),
+            pause_start_key=data.get("pause_start_key", "space"),
+            mute_unmute_key=data.get("mute_unmute_key", "m"),
+            volume_num=data.get("volume_num", 50),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -42,7 +54,55 @@ class Settings:
             "pause_start_key": self.pause_start_key,
             "mute_unmute_key": self.mute_unmute_key,
             "volume_num": self.volume_num,
-            "default_quality": self.default_quality.value,  # Quality.best -> "best"
+        }
+
+
+@dataclass
+class Settings:
+    default_chat_active: bool = False
+    default_pause_start_key: str = "space"
+    default_mute_unmute_key: str = "m"
+    default_volume_num: int = 50
+    dark_light_mode: Theme = Theme.dark
+    auto_select_quality: tuple[Quality, bool] = (Quality.best, False)
+    auto_refresh_sec: float = 60.0
+    custom_settings: dict[int, CustomSettings] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Settings:
+        raw_custom = data.get("custom_settings", {})
+        custom_settings = {
+            int(k): CustomSettings.from_dict(v) for k, v in raw_custom.items()
+        }
+
+        raw_quality = data.get("auto_select_quality", ["best", False])
+
+        return cls(
+            default_chat_active=data.get("default_chat_active", False),
+            default_pause_start_key=data.get("default_pause_start_key", "space"),
+            default_mute_unmute_key=data.get("default_mute_unmute_key", "m"),
+            default_volume_num=data.get("default_volume_num", 50),
+            dark_light_mode=Theme(data.get("dark_light_mode", "dark")),
+            auto_select_quality=(Quality(raw_quality[0]), raw_quality[1]),
+            auto_refresh_sec=data.get("auto_refresh_sec", 60.0),
+            custom_settings=custom_settings,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "default_chat_active": self.default_chat_active,
+            "default_pause_start_key": self.default_pause_start_key,
+            "default_mute_unmute_key": self.default_mute_unmute_key,
+            "default_volume_num": self.default_volume_num,
+            "dark_light_mode": self.dark_light_mode.value,
+            "auto_select_quality": (
+                self.auto_select_quality[0].value,
+                self.auto_select_quality[1],
+            ),
+            "auto_refresh_sec": self.auto_refresh_sec,
+            "custom_settings": {
+                str(k): v.to_dict() for k, v in self.custom_settings.items()
+            },
         }
 
 

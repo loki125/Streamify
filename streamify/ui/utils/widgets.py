@@ -52,7 +52,7 @@ class StreamVideoWindow(QMdiSubWindow):
 
 class StreamListItemWidget(QWidget):
     launch_requested: pyqtSignal = pyqtSignal(int, object)
-
+    custom_settings_requested: pyqtSignal = pyqtSignal(int, object)
     edit_requested: pyqtSignal = pyqtSignal(int, object)
     status_check_requested: pyqtSignal = pyqtSignal(int, object)
     remove_requested: pyqtSignal = pyqtSignal(int, object)
@@ -86,6 +86,7 @@ class StreamListItemWidget(QWidget):
 
         edit_action = menu.addAction("✍︎ Edit")
         check_action = menu.addAction("⚫ Check Status")
+        settings_action = menu.addAction("⚙️ Custom Settings")
         _ = menu.addSeparator()
         remove_action = menu.addAction("✖ Remove")
 
@@ -100,6 +101,9 @@ class StreamListItemWidget(QWidget):
         elif action == remove_action:
             sig3: Any = self.remove_requested
             sig3.emit(self.stream_id, self.stream)
+        elif action == settings_action:
+            sig4: Any = self.custom_settings_requested
+            sig4.emit(self.stream_id, self.stream)
 
     def update_status(self, is_live: bool) -> None:
         if is_live:

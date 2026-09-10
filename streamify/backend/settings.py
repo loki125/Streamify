@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from .core.config import SETTINGS_FILE
-from .core.models import Quality, Settings
+from .core.models import Settings
 
 
 class SettingsConfig:
@@ -14,13 +14,7 @@ class SettingsConfig:
 
     def get_default_settings(self) -> Settings:
         """Returns the fallback settings."""
-        return Settings(
-            chat_active=False,
-            pause_start_key="",
-            mute_unmute_key="",
-            volume_num=0,
-            default_quality=Quality.best,
-        )
+        return Settings()
 
     def fetch_settings(self) -> Settings:
         """Loads settings from file if it exists, otherwise returns defaults."""

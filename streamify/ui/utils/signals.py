@@ -5,6 +5,7 @@ from typing import Any, override
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from streamify.backend.core.models import Stream
+from streamify.backend.fetchers.base_fetcher import BaseFetcher
 from streamify.backend.manager import StreamlinkManager
 
 
@@ -74,3 +75,15 @@ class SingleStatusWorker(QThread):
     def run(self) -> None:
         is_live = self.manager.check_single_status(self.stream_obj)
         self.checked_finished.emit(self.stream_id, is_live)
+
+
+class FetchFollowsWorker(QThread):
+    error: pyqtSignal = pyqtSignal(str)
+
+    def __init__(self, fetcher: BaseFetcher) -> None:
+        super().__init__()
+        self.fetcher: BaseFetcher = fetcher
+
+    @override
+    def run(self) -> None:
+        pass
