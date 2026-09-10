@@ -32,6 +32,14 @@ class FetcherFactory:
         return fetcher_class(**kwargs)
 
     @classmethod
+    def get_fetcher_by_url(cls, url: str, **kwargs: Any) -> BaseFetcher | None:
+        """Check the status of a fetcher for a given platform and URL."""
+        for platform, fetcher_class in cls._fetcher_registry.items():
+            if platform in url:
+                return fetcher_class(**kwargs)
+        return None
+
+    @classmethod
     def register_fetcher(cls, platform_name: str, fetcher_cls: type[BaseFetcher]):
         """Allows dynamically registering new platform fetchers."""
         cls._fetcher_registry[platform_name.lower().strip()] = fetcher_cls

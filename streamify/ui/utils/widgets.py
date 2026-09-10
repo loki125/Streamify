@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, override
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QCloseEvent, QContextMenuEvent
 from PyQt6.QtWidgets import (
     QFrame,
@@ -32,8 +32,12 @@ class StreamVideoWindow(QMdiSubWindow):
         self.setWindowTitle(stream_name)
         self.setMinimumSize(640, 360)
 
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+
         self.video_frame: QFrame = QFrame()
         self.video_frame.setStyleSheet("background-color: black;")
+        self.video_frame.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
+
         self.setWidget(self.video_frame)
 
     def get_win_id(self) -> int:
@@ -83,7 +87,7 @@ class StreamListItemWidget(QWidget):
         edit_action = menu.addAction("✍︎ Edit")
         check_action = menu.addAction("⚫ Check Status")
         _ = menu.addSeparator()
-        remove_action = menu.addAction("❌ Remove")
+        remove_action = menu.addAction("✖ Remove")
 
         action = menu.exec(a0.globalPos())
 

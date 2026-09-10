@@ -62,16 +62,12 @@ class HomeTab(QWidget):
 
         search_layout = QHBoxLayout()
         self.search_input: QLineEdit = QLineEdit()
-        self.search_input.setPlaceholderText("Search streams...")
-
-        self.btn_search: QPushButton = QPushButton("⌕")
-        self.btn_search.setFixedWidth(40)
+        self.search_input.setPlaceholderText("⌕ Search streams...")
 
         self.btn_refresh: QPushButton = QPushButton("↻")
         self.btn_refresh.setFixedWidth(40)
 
         search_layout.addWidget(self.search_input)
-        search_layout.addWidget(self.btn_search)
         search_layout.addWidget(self.btn_refresh)
         sidebar_layout.addLayout(search_layout)
 
@@ -94,8 +90,7 @@ class HomeTab(QWidget):
 
         self.splitter.setSizes([250, 950])
 
-        safe_connect(self.btn_search.clicked, self.perform_search)
-        safe_connect(self.search_input.returnPressed, self.perform_search)
+        safe_connect(self.search_input.textChanged, self.refresh_stream_list)
 
     # ==================== LOGIC ====================
     def perform_search(self) -> None:
@@ -149,14 +144,22 @@ class HomeTab(QWidget):
     def on_qualities_ready(
         self, available_qualities: list[str], stream_id: int, stream: Stream
     ) -> None:
-        """STEP 2 (Success): Ask for quality and create window."""
+        for sub_window in self.mdi_area.subWindowList():
+            if (
+                isinstance(sub_window, StreamVideoWindow)
+                and sub_window.stream_id == stream_id
+            ):
+                self.mdi_area.setActiveSubWindow(sub_window)
+                return
+
         selected_quality = dialogs.ask_quality_dialog(self, available_qualities)
         if not selected_quality:
             return
 
         video_window = StreamVideoWindow(stream_id, stream.name, self.manager)
         _ = self.mdi_area.addSubWindow(video_window)
-        video_window.show()
+
+        video_window.showMaximized()
 
         win_id = video_window.get_win_id()
 
@@ -192,14 +195,20 @@ class HomeTab(QWidget):
         return new_cats.index(category_str)
 
     def open_add_dialog(self) -> None:
-        """Handles the '+' button."""
         dialog = StreamEditDialog(self, self.manager)
         if dialog.exec():
             name, url, category_str = dialog.get_data()
             if name and url:
                 cat_id = self._resolve_category_id(category_str)
-                self.manager.add_stream(name, url, cat_id)
+
+                stream_id = self.manager.add_stream(name, url, cat_id)
                 self.refresh_stream_list()
+
+                new_stream = self.manager.get_stream(stream_id)
+                if new_stream is None:
+                    raise ValueError(f"Ghost stream with id {stream_id}")
+
+                self.trigger_single_status_check(stream_id, new_stream)
 
     def open_edit_dialog(self, stream_id: int, stream: Stream) -> None:
         dialog = StreamEditDialog(self, self.manager, stream)

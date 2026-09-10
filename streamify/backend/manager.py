@@ -4,13 +4,20 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from types import TracebackType
+from typing import Any, Self
 
 import mpv  # pyright: ignore[reportMissingTypeStubs]
 from streamlink.exceptions import NoPluginError, PluginError, StreamlinkError
 from streamlink.session.session import Streamlink
 
-from .core.config import DEFAULT_CATEGORY_ID
+from streamify.backend.fetcher_factory import FetcherFactory
+
+from .core.config import (
+    DEFAULT_CATEGORY_ID,
+    STREAMLINK_HTTP_TIMEOUT,
+    STREAMLINK_SESSION_TIMEOUT,
+)
 from .core.database import StreamDB
 from .core.models import Quality, Stream
 
@@ -18,9 +25,30 @@ from .core.models import Quality, Stream
 class StreamlinkManager:
     def __init__(self) -> None:
         self.session: Streamlink = Streamlink()
+        self.session.set_option(STREAMLINK_HTTP_TIMEOUT, STREAMLINK_SESSION_TIMEOUT)
+
         self.database: StreamDB = StreamDB()
 
         self.active_players: dict[int, mpv.MPV] = {}
+
+    def __enter__(self) -> Self:
+        """Called when entering the 'with' block."""
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Called automatically when the app exits."""
+        self.stop_all_streams()
+        self.database.save_streams_json()
+
+    def stop_all_streams(self) -> None:
+        for player in self.active_players.values():
+            player.terminate()
+        self.active_players.clear()
 
     def construct_raw_url(self, stream_id: int, quality: Quality) -> str:
         """Fetches the raw .m3u8 video URL for a given stream ID and quality."""
@@ -89,6 +117,10 @@ class StreamlinkManager:
             del self.active_players[stream_id]
 
     def check_single_status(self, stream_obj: Stream) -> bool:
+        fetcher = FetcherFactory().get_fetcher_by_url(stream_obj.url)
+        if fetcher is not None:
+            return fetcher.check_status(stream_obj.url)
+
         try:
             streams = self.session.streams(stream_obj.url)
             return bool(streams)
@@ -123,13 +155,13 @@ class StreamlinkManager:
 
     def add_stream(
         self, name: str, url: str, category_id: int = DEFAULT_CATEGORY_ID
-    ) -> None:
+    ) -> int:
         new_stream: Stream = Stream(name=name, url=url, category_id=category_id)
 
-        stream_id = self.database.add_stream(new_stream)
-        stream_status = self.check_single_status(new_stream)
+        return self.database.add_stream(new_stream)
 
-        _ = self.database.update_stream_status(stream_id, stream_status)
+    def get_stream(self, stream_id: int) -> Stream | None:
+        return self.database.get_stream(stream_id)
 
     def get_all_categories(self) -> list[str]:
         return self.database.get_all_categories()

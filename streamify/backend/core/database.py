@@ -28,20 +28,21 @@ class StreamDB:
     def init_streams_json(self) -> MediaCatalog:
         defualt_catalog = MediaCatalog(streams=[], categories=[DEFAULT_CATEGORY])
         if not os.path.exists(STREAM_LIST):
-            with open(STREAM_LIST, "w") as data:
-                json.dump(defualt_catalog.to_dict(), data)
+            os.makedirs(os.path.dirname(STREAM_LIST), exist_ok=True)
+
+        with open(STREAM_LIST, "w") as data:
+            json.dump(defualt_catalog.to_dict(), data, indent=4)
 
         return defualt_catalog
 
     def save_streams_json(self):
-        if not os.path.exists(STREAM_LIST):
-            with open(STREAM_LIST, "w") as data:
-                json.dump(self._media_cat.to_dict(), data)
+        with open(STREAM_LIST, "w") as data:
+            json.dump(self._media_cat.to_dict(), data, indent=4)
 
     def add_stream(self, stream: Stream) -> int:
         self._media_cat.streams.append(stream)
 
-        return len(self._media_cat.streams)
+        return len(self._media_cat.streams) - 1
 
     def remove_stream(self, stream_index: int) -> Stream | None:
         try:

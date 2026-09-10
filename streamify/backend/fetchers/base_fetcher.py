@@ -12,3 +12,8 @@ class BaseFetcher(ABC):
     def fetch_follows(self) -> list[Stream]:
         """Fetch and return the list of followed accounts/channels."""
         return []
+
+    @abstractmethod
+    def check_status(self, url: str) -> bool:
+        """Check the status of the fetcher (e.g., if the API key is valid)."""
+        return False

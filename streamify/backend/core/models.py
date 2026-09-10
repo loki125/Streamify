@@ -59,16 +59,11 @@ class Stream:
             name=data["name"],
             url=data["url"],
             category_id=data.get("category_id", 0),
-            live=data.get("live", False),
+            live=False,
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "name": self.name,
-            "url": self.url,
-            "category_id": self.category_id,
-            "live": self.live,
-        }
+        return {"name": self.name, "url": self.url, "category_id": self.category_id}
 
 
 @dataclass

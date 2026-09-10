@@ -15,13 +15,13 @@ from .tabs.twitch_tab import TwitchTab
 
 
 class MainWindow(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(self, manager: StreamlinkManager) -> None:
         super().__init__()
         self.setWindowTitle("Streamify")
         self.resize(1200, 720)
 
         self.settings_config: SettingsConfig = SettingsConfig()
-        self.manager: StreamlinkManager = StreamlinkManager()
+        self.manager: StreamlinkManager = manager
 
         self.init_ui()
 
