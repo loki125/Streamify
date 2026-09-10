@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLineEdit,
@@ -82,9 +83,11 @@ class HomeTab(QWidget):
         safe_connect(self.btn_add_stream.clicked, self.open_add_dialog)
 
         # ==================== RIGHT VIEWING AREA ====================
-        self.mdi_area: QMdiArea = QMdiArea()
+        self.mdi_area: QMdiArea = QMdiArea(self.splitter)
         self.mdi_area.setViewMode(QMdiArea.ViewMode.TabbedView)
         self.mdi_area.setTabsClosable(True)
+
+        self.mdi_area.setBackground(QBrush(QColor("#0e0e10")))
 
         self.splitter.addWidget(self.mdi_area)
 

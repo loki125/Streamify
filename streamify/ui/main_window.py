@@ -14,12 +14,14 @@ from .tabs.settings_tab import SettingsTab
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, manager: StreamlinkManager) -> None:
+    def __init__(
+        self, manager: StreamlinkManager, settings_config: SettingsConfig
+    ) -> None:
         super().__init__()
         self.setWindowTitle("Streamify")
         self.resize(1200, 720)
 
-        self.settings_config: SettingsConfig = SettingsConfig()
+        self.settings_config: SettingsConfig = settings_config
         self.manager: StreamlinkManager = manager
 
         self.init_ui()
