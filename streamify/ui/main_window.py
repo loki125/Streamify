@@ -7,23 +7,18 @@ from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget
 
 from streamify.backend.manager import StreamlinkManager
-from streamify.backend.settings import SettingsConfig
 
 from .tabs.home_tab import HomeTab
 from .tabs.settings_tab import SettingsTab
 
 
 class MainWindow(QMainWindow):
-    def __init__(
-        self, manager: StreamlinkManager, settings_config: SettingsConfig
-    ) -> None:
+    def __init__(self, manager: StreamlinkManager) -> None:
         super().__init__()
         self.setWindowTitle("Streamify")
         self.resize(1200, 720)
 
-        self.settings_config: SettingsConfig = settings_config
         self.manager: StreamlinkManager = manager
-
         self.init_ui()
 
     def init_ui(self) -> None:
@@ -35,10 +30,8 @@ class MainWindow(QMainWindow):
         self.tabs: QTabWidget = QTabWidget()
         main_layout.addWidget(self.tabs)
 
-        self.home_tab: HomeTab = HomeTab(self.manager, self.settings_config)
-        self.settings_tab: SettingsTab = SettingsTab(
-            self.manager, self.settings_config, self
-        )
+        self.home_tab: HomeTab = HomeTab(self.manager)
+        self.settings_tab: SettingsTab = SettingsTab(self.manager, self)
 
         _ = self.tabs.addTab(self.home_tab, "☰ Home")
         _ = self.tabs.addTab(self.settings_tab, "⚙️ Settings")

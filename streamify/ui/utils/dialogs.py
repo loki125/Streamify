@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QInputDialog,
+    QKeySequenceEdit,
     QLineEdit,
     QSlider,
     QToolButton,
@@ -140,7 +141,7 @@ class TwitchImportDialog(QDialog):
 
 
 class CustomStreamSettingsDialog(QDialog):
-    """Dialog for stream-specific overrides."""
+    """Dialog for stream-specific overrides with native key press detection."""
 
     def __init__(
         self,
@@ -150,7 +151,7 @@ class CustomStreamSettingsDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Custom Stream Settings")
-        self.resize(300, 200)
+        self.resize(320, 200)
 
         self.settings: CustomSettings = (
             current_custom
@@ -163,8 +164,12 @@ class CustomStreamSettingsDialog(QDialog):
         self.chat_check: QCheckBox = QCheckBox()
         self.chat_check.setChecked(self.settings.chat_active)
 
-        self.pause_input: QLineEdit = QLineEdit(self.settings.pause_start_key)
-        self.mute_input: QLineEdit = QLineEdit(self.settings.mute_unmute_key)
+        self.pause_input: QKeySequenceEdit = QKeySequenceEdit(
+            self.settings.pause_start_key
+        )
+        self.mute_input: QKeySequenceEdit = QKeySequenceEdit(
+            self.settings.mute_unmute_key
+        )
 
         self.vol_slider: QSlider = QSlider(Qt.Orientation.Horizontal)
         self.vol_slider.setRange(0, 100)
@@ -185,7 +190,7 @@ class CustomStreamSettingsDialog(QDialog):
     def get_custom_settings(self) -> CustomSettings:
         return CustomSettings(
             chat_active=self.chat_check.isChecked(),
-            pause_start_key=self.pause_input.text().strip(),
-            mute_unmute_key=self.mute_input.text().strip(),
+            pause_start_key=self.pause_input.keySequence().toString(),
+            mute_unmute_key=self.mute_input.keySequence().toString(),
             volume_num=self.vol_slider.value(),
         )

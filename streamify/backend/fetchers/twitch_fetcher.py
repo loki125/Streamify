@@ -1,31 +1,67 @@
 from __future__ import annotations
 
 import re
+import webbrowser
 from typing import Any, override
 
 import requests
 
 from ..core.models import Stream
 from .base_fetcher import BaseFetcher
-
-TWITCH_API = "https://api.twitch.tv/helix"
-TWITCH_URL = "https://www.twitch.tv"
+from .config import (
+    TWITCH_API,
+    TWITCH_CLIENT_ID,
+    TWITCH_URL,
+)
+from .models import OAuthCallbackHandler, OAuthHTTPServer
 
 
 class TwitchFetcher(BaseFetcher):
     def __init__(
         self,
-        client_id: str | None = None,
+        client_id: str = TWITCH_CLIENT_ID,
         access_token: str | None = None,
     ):
-        """
-        :param client_id: Twitch App Client ID
-        :param access_token: User OAuth Access Token (with 'user:read:follows' scope)
-        :param user_id: (Optional) If omitted, it will automatically query the token's owner.
-        """
-
         self.client_id: str | None = client_id
         self.access_token: str | None = access_token
+
+    @override
+    def authenticate(self, **kwargs: Any) -> str:
+        """
+        Authenticates via Twitch OAuth.
+        Expected kwargs: `port` (int) - The localhost port for the redirect server.
+        """
+        port = kwargs.get("port")
+        if not isinstance(port, int):
+            raise TypeError(
+                "TwitchFetcher.authenticate requires an integer 'port' in kwargs."
+            )
+
+        if not self.client_id:
+            raise ValueError("Client ID is required for authentication.")
+
+        server = OAuthHTTPServer(("localhost", port), OAuthCallbackHandler)
+        server.access_token = None
+        server.timeout = 120
+
+        auth_url = (
+            f"https://id.twitch.tv/oauth2/authorize"
+            f"?client_id={self.client_id}"
+            f"&redirect_uri=http://localhost:{port}"
+            f"&response_type=token"
+            f"&scope=user:read:follows"
+        )
+
+        _ = webbrowser.open(auth_url)
+
+        while not getattr(server, "access_token", None):
+            server.handle_request()
+
+        if not server.access_token:
+            raise TimeoutError("Authentication timed out or was canceled.")
+
+        self.access_token = server.access_token
+        return self.access_token
 
     @override
     def fetch_follows(self) -> list[Stream]:

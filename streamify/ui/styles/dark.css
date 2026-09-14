@@ -26,7 +26,7 @@ QMdiArea {
 }
 
 /* ============================================================
-   LEFT SIDEBAR & STREAM LIST (Fixes the giant white box!)
+   LEFT SIDEBAR & STREAM LIST
 ============================================================ */
 QListWidget {
     background-color: #18181b;
@@ -36,9 +36,11 @@ QListWidget {
     padding: 4px;
 }
 
+/* 1. Forces the list row to be tall enough so nothing gets smushed */
 QListWidget::item {
+    min-height: 38px;
     border-radius: 4px;
-    padding: 6px;
+    padding: 0px 4px;
     margin-bottom: 2px;
 }
 
@@ -50,7 +52,27 @@ QListWidget::item:selected {
     background-color: #3f3f46;
 }
 
-/* The vertical separator between sidebar and video area */
+/* 2. Styles the Launch button specifically inside the list */
+QListWidget QPushButton {
+    min-height: 24px;
+    max-height: 24px;
+    padding: 0px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 4px;
+    background-color: #26262c;
+    border: 1px solid #3f3f46;
+}
+
+QListWidget QPushButton:hover {
+    background-color: #3f3f46;
+    border-color: #ffffff;
+}
+
+QListWidget QPushButton:pressed {
+    background-color: #18181b;
+}
+
 QSplitter::handle {
     background-color: #27272a;
     width: 2px;
@@ -265,5 +287,39 @@ QToolTip {
     color: #efeff1;
     border: 1px solid #3f3f46;
     padding: 6px;
+    border-radius: 4px;
+}
+
+/* ============================================================
+   RIGHT-CLICK CONTEXT MENU (QMenu)
+============================================================ */
+QMenu {
+    background-color: #18181b;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    padding: 4px;
+}
+
+QMenu::item {
+    background-color: transparent;
+    color: #efeff1;
+    padding: 6px 24px 6px 12px;
+    border-radius: 4px;
+}
+
+QMenu::item:selected {
+    background-color: #26262c;
+    color: #ffffff;
+}
+
+QMenu::separator {
+    height: 1px;
+    background-color: #27272a;
+    margin: 4px 8px;
+}
+
+QPushButton#launchBtn {
+    padding: 2px 6px;
+    font-size: 11px;
     border-radius: 4px;
 }

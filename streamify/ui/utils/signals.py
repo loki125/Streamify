@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, override
 
 from PyQt6.QtCore import QThread, pyqtSignal
+from requests.exceptions import RequestException
 
 from streamify.backend.core.models import Stream
 from streamify.backend.fetchers.base_fetcher import BaseFetcher
@@ -78,6 +79,7 @@ class SingleStatusWorker(QThread):
 
 
 class FetchFollowsWorker(QThread):
+    fetch_finished: pyqtSignal = pyqtSignal(list)
     error: pyqtSignal = pyqtSignal(str)
 
     def __init__(self, fetcher: BaseFetcher) -> None:
@@ -86,4 +88,32 @@ class FetchFollowsWorker(QThread):
 
     @override
     def run(self) -> None:
-        pass
+        try:
+            new_streams: list[Stream] = self.fetcher.fetch_follows()
+            self.fetch_finished.emit(new_streams)
+        except (ValueError, RequestException) as e:
+            self.error.emit(str(e))
+
+
+class PlatformAuthWorker(QThread):
+    """A generic UI Thread that delegates authentication to ANY backend fetcher."""
+
+    auth_successful: pyqtSignal = pyqtSignal(object)
+    error: pyqtSignal = pyqtSignal(str)
+
+    def __init__(self, fetcher: BaseFetcher, **auth_kwargs: Any) -> None:
+        super().__init__()
+        self.fetcher: BaseFetcher = fetcher
+        self.auth_kwargs: Any = auth_kwargs
+
+    @override
+    def run(self) -> None:
+        try:
+            result = self.fetcher.authenticate(**self.auth_kwargs)
+
+            sig: Any = self.auth_successful
+            sig.emit(result)
+
+        except (ValueError, TimeoutError, OSError, NotImplementedError) as e:
+            sig_err: Any = self.error
+            sig_err.emit(str(e))

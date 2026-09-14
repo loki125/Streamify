@@ -22,29 +22,28 @@ from PyQt6.QtWidgets import (
 )
 
 from streamify.backend.core.config import STREAM_LIST
-from streamify.backend.core.models import Quality, Settings, Theme
+from streamify.backend.core.models import Quality, Settings, Stream, Theme
 from streamify.backend.fetcher_factory import FetcherFactory
+from streamify.backend.fetchers.config import TWITCH_CLIENT_ID, TWITCH_REDIRECT_PORT
 from streamify.backend.manager import StreamlinkManager
-from streamify.backend.settings import SettingsConfig
 
-from ..utils import dialogs
 from ..utils.config import JSON_EDIT_NOTE, JSON_EDIT_WARNING, load_stylesheet
-from ..utils.signals import FetchFollowsWorker, safe_connect
+from ..utils.signals import FetchFollowsWorker, PlatformAuthWorker, safe_connect
 
 
 class SettingsTab(QWidget):
     def __init__(
         self,
         manager: StreamlinkManager,
-        settings_config: SettingsConfig,
         main_window: QWidget,
     ) -> None:
         super().__init__()
         self.manager: StreamlinkManager = manager
-        self.settings_config: SettingsConfig = settings_config
         self.main_window: QWidget = main_window
-        self.settings: Settings = self.settings_config.get_settings()
+        self.settings: Settings = self.manager.settings_config.get_settings()
+
         self.twitch_worker: FetchFollowsWorker | None = None
+        self.auth_worker: PlatformAuthWorker | None = None
 
         self.is_loading: bool = True
 
@@ -230,7 +229,9 @@ class SettingsTab(QWidget):
                 self.settings.auto_refresh_sec = float(val)
 
         self.set_theme()
-        self.settings_config.save_settings(self.settings)
+        self.manager.settings_config.set_settings(self.settings)
+
+        self.manager.all_apply_settings()
 
     def set_theme(self) -> None:
         new_theme = Theme(self.theme_combo.currentText())
@@ -242,41 +243,64 @@ class SettingsTab(QWidget):
                 load_stylesheet(app, theme_name=new_theme.value)
 
     def open_twitch_dialog(self) -> None:
-        dialog = dialogs.TwitchImportDialog(self)
-        if dialog.exec():
-            client_id, access_token = dialog.get_credentials()
-            if client_id and access_token:
-                self.btn_twitch.setEnabled(False)
-                self.btn_twitch.setText("Fetching...")
+        """1-Click Twitch Login & Follow Import."""
+        self.btn_twitch.setEnabled(False)
+        self.btn_twitch.setText("Opening browser...")
 
-                self.twitch_worker = FetchFollowsWorker(
-                    FetcherFactory().get_fetcher(
-                        "twitch", client_id=client_id, access_token=access_token
-                    )
+        fetcher = FetcherFactory().get_fetcher("twitch", client_id=TWITCH_CLIENT_ID)
+
+        self.auth_worker = PlatformAuthWorker(fetcher, port=TWITCH_REDIRECT_PORT)
+
+        def on_auth_success(token: str) -> None:
+            self.btn_twitch.setText("Fetching follows...")
+
+            self.twitch_worker = FetchFollowsWorker(
+                FetcherFactory().get_fetcher(
+                    "twitch", client_id=TWITCH_CLIENT_ID, access_token=token
                 )
+            )
 
-                def on_success(streams: list[Any]) -> None:
-                    for s in streams:
+            def on_success(_streams: list[Stream]) -> None:
+                existing_urls = {
+                    s.url.lower() for _idx, s in self.manager.query_streams()
+                }
+                added_count = 0
+
+                for s in _streams:
+                    if s.url.lower() not in existing_urls:
                         _ = self.manager.add_stream(s.name, s.url, s.category_id)
+                        existing_urls.add(s.url.lower())
+                        added_count += 1
 
-                    mw: Any = self.main_window
-                    if hasattr(mw, "home_tab"):
-                        mw.home_tab.refresh_stream_list()
+                mw: Any = self.main_window
+                if hasattr(mw, "home_tab"):
+                    mw.home_tab.refresh_stream_list()
 
-                    _ = QMessageBox.information(
-                        self, "Success", f"Imported {len(streams)} streams."
-                    )
-                    self.btn_twitch.setEnabled(True)
-                    self.btn_twitch.setText("Import Twitch Follows")
+                _ = QMessageBox.information(
+                    self, "Success", f"Imported {added_count} new streams from Twitch!"
+                )
+                self.btn_twitch.setEnabled(True)
+                self.btn_twitch.setText("Import Twitch Follows")
 
-                def on_error(err: str) -> None:
-                    _ = QMessageBox.warning(self, "Error", f"Failed: {err}")
-                    self.btn_twitch.setEnabled(True)
-                    self.btn_twitch.setText("Import Twitch Follows")
+            def on_error(err: str) -> None:
+                _ = QMessageBox.warning(
+                    self, "Error", f"Failed fetching follows: {err}"
+                )
+                self.btn_twitch.setEnabled(True)
+                self.btn_twitch.setText("Import Twitch Follows")
 
-                safe_connect(self.twitch_worker.finished, on_success)
-                safe_connect(self.twitch_worker.error, on_error)
-                self.twitch_worker.start()
+            safe_connect(self.twitch_worker.fetch_finished, on_success)
+            safe_connect(self.twitch_worker.error, on_error)
+            self.twitch_worker.start()
+
+        def on_auth_error(err: str) -> None:
+            _ = QMessageBox.warning(self, "Login Error", f"Twitch login failed: {err}")
+            self.btn_twitch.setEnabled(True)
+            self.btn_twitch.setText("Import Twitch Follows")
+
+        safe_connect(self.auth_worker.auth_successful, on_auth_success)
+        safe_connect(self.auth_worker.error, on_auth_error)
+        self.auth_worker.start()
 
     def edit_json(self) -> None:
         reply = QMessageBox.question(

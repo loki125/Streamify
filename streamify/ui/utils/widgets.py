@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, override
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QCloseEvent, QContextMenuEvent
+from PyQt6.QtGui import QCloseEvent, QContextMenuEvent, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -20,25 +20,37 @@ from streamify.backend.manager import StreamlinkManager
 
 
 class StreamVideoWindow(QMdiSubWindow):
-    """A floating/tabbed sub-window that houses the MPV player."""
-
     def __init__(
-        self, stream_id: int, stream_name: str, manager: StreamlinkManager
+        self,
+        stream_id: int,
+        stream_name: str,
+        manager: StreamlinkManager,
+        pause_key: str = "",
+        mute_key: str = "",
     ) -> None:
         super().__init__()
         self.stream_id: int = stream_id
         self.manager: StreamlinkManager = manager
 
         self.setWindowTitle(stream_name)
-        self.setMinimumSize(640, 360)
-
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
 
-        self.video_frame: QFrame = QFrame()
+        self.video_frame: QFrame = QFrame(self)
         self.video_frame.setStyleSheet("background-color: black;")
         self.video_frame.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
-
         self.setWidget(self.video_frame)
+
+        if pause_key:
+            self.pause_shortcut: QShortcut = QShortcut(QKeySequence(pause_key), self)
+            _ = self.pause_shortcut.activated.connect(
+                lambda: self.manager.toggle_pause(self.stream_id)
+            )
+
+        if mute_key:
+            self.mute_shortcut: QShortcut = QShortcut(QKeySequence(mute_key), self)
+            _ = self.mute_shortcut.activated.connect(
+                lambda: self.manager.toggle_mute(self.stream_id)
+            )
 
     def get_win_id(self) -> int:
         return int(self.video_frame.winId())

@@ -19,7 +19,8 @@ from .core.config import (
     STREAMLINK_SESSION_TIMEOUT,
 )
 from .core.database import StreamDB
-from .core.models import Quality, Stream
+from .core.models import CustomSettings, Quality, Settings, Stream
+from .core.settings import SettingsConfig
 
 
 class StreamlinkManager:
@@ -28,6 +29,7 @@ class StreamlinkManager:
         self._session.set_option(STREAMLINK_HTTP_TIMEOUT, STREAMLINK_SESSION_TIMEOUT)
 
         self._database: StreamDB = StreamDB()
+        self.settings_config: SettingsConfig = SettingsConfig()
 
         self._active_players: dict[int, mpv.MPV] = {}
 
@@ -44,6 +46,7 @@ class StreamlinkManager:
         """Called automatically when the app exits."""
         self.stop_all_streams()
         self._database.save_streams_json()
+        self.settings_config.save_settings()
 
     def stop_all_streams(self) -> None:
         for player in self._active_players.values():
@@ -82,9 +85,11 @@ class StreamlinkManager:
     ) -> None:
         try:
             raw_url = self.construct_raw_url(stream_id, quality)
+            settings = self.settings_config.get_settings()
 
-            player = mpv.MPV(wid=str(win_id), log_handler=print)
+            player = mpv.MPV(wid=str(win_id), volume_max=150, log_handler=print)
             self._active_players[stream_id] = player
+            self.apply_settings(settings, stream_id)
 
             player.play(raw_url)
 
@@ -94,6 +99,43 @@ class StreamlinkManager:
         except (OSError, TimeoutError, ConnectionError) as e:
             if on_error:
                 on_error(stream_id, f"Network error: {e}")
+
+    def apply_settings(self, settings: Settings, stream_id: int) -> None:
+        custom = settings.custom_settings.get(stream_id)
+        if custom is None:
+            custom = CustomSettings.default(settings)
+
+        player = self._active_players[stream_id]
+        if not player:
+            return
+        player.volume = custom.volume_num
+
+        def format_key(qt_key: str) -> str:
+            return qt_key.lower().replace(" ", "")
+
+        @player.on_key_press(format_key(custom.pause_start_key))
+        def toggle_pause() -> None:
+            player.pause = not player.pause
+
+        @player.on_key_press(format_key(custom.mute_unmute_key))
+        def toggle_mute() -> None:
+            player.mute = not player.mute
+
+    def all_apply_settings(self) -> None:
+        for stream_id in self._active_players:
+            self.apply_settings(self.settings_config.get_settings(), stream_id)
+
+    def toggle_pause(self, stream_id: int) -> None:
+        """Toggles play/pause on the active player."""
+        player = self._active_players.get(stream_id)
+        if player:
+            player.pause = not player.pause
+
+    def toggle_mute(self, stream_id: int) -> None:
+        """Toggles mute/unmute on the active player."""
+        player = self._active_players.get(stream_id)
+        if player:
+            player.mute = not player.mute
 
     def launch_stream(
         self,

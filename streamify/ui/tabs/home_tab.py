@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
 
 from streamify.backend.core.models import Stream
 from streamify.backend.manager import StreamlinkManager
-from streamify.backend.settings import SettingsConfig
 
 from ..utils import dialogs
 from ..utils.dialogs import StreamEditDialog
@@ -36,13 +35,9 @@ from ..utils.widgets import StreamListItemWidget, StreamVideoWindow
 class HomeTab(QWidget):
     stream_error_signal: pyqtSignal = pyqtSignal(str)
 
-    def __init__(
-        self, manager: StreamlinkManager, settings_config: SettingsConfig
-    ) -> None:
+    def __init__(self, manager: StreamlinkManager) -> None:
         super().__init__()
         self.manager: StreamlinkManager = manager
-        self.settings_config: SettingsConfig = settings_config
-
         self.active_workers: list[QThread] = []
 
         safe_connect(self.stream_error_signal, self.show_stream_error)
@@ -162,9 +157,20 @@ class HomeTab(QWidget):
         if not selected_quality:
             return
 
-        video_window = StreamVideoWindow(stream_id, stream.name, self.manager)
-        _ = self.mdi_area.addSubWindow(video_window)
+        settings = self.manager.settings_config.get_settings()
+        custom = settings.custom_settings.get(stream_id)
 
+        pause_k = custom.pause_start_key if custom else settings.default_pause_start_key
+        mute_k = custom.mute_unmute_key if custom else settings.default_mute_unmute_key
+
+        video_window = StreamVideoWindow(
+            stream_id=stream_id,
+            stream_name=stream.name,
+            manager=self.manager,
+            pause_key=pause_k,
+            mute_key=mute_k,
+        )
+        _ = self.mdi_area.addSubWindow(video_window)
         video_window.showMaximized()
 
         win_id = video_window.get_win_id()
@@ -230,7 +236,7 @@ class HomeTab(QWidget):
         self.refresh_stream_list()
 
     def open_custom_settings_dialog(self, stream_id: int, _stream: Stream) -> None:
-        settings = self.settings_config.get_settings()
+        settings = self.manager.settings_config.get_settings()
         current_custom = settings.custom_settings.get(stream_id)
 
         dialog = dialogs.CustomStreamSettingsDialog(self, current_custom, settings)
@@ -238,9 +244,9 @@ class HomeTab(QWidget):
         if dialog.exec():
             new_custom = dialog.get_custom_settings()
             settings.custom_settings[stream_id] = new_custom
-            self.settings_config.save_settings(settings)
+            self.manager.settings_config.set_settings(settings)
 
-    # --- STATUS CHECKING ---
+            self.manager.apply_settings(settings, stream_id)
 
     def trigger_global_status_check(self) -> None:
         self.btn_refresh.setEnabled(False)

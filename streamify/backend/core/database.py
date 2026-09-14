@@ -69,9 +69,19 @@ class StreamDB:
         query_pattern = re.compile(query, re.IGNORECASE) if query else None
 
         for idx, s in enumerate(self._media_cat.streams):
-            if query_pattern and not query_pattern.search(s.name):
+            if not query_pattern:
+                results.append((idx, s))
                 continue
-            results.append((idx, s))
+
+            name_matches = bool(query_pattern.search(s.name))
+            cat_name = ""
+            if 0 <= s.category_id < len(self._media_cat.categories):
+                cat_name = self._media_cat.categories[s.category_id]
+
+            category_matches = bool(query_pattern.search(cat_name))
+
+            if name_matches or category_matches:
+                results.append((idx, s))
 
         return results
 

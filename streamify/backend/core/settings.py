@@ -2,28 +2,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from types import TracebackType
-from typing import Self
 
-from .core.config import SETTINGS_FILE
-from .core.models import Settings
+from .config import SETTINGS_FILE
+from .models import Settings
 
 
 class SettingsConfig:
     def __init__(self) -> None:
         self.file_path: Path = Path(SETTINGS_FILE)
         self._settings: Settings = self.fetch_settings()
-
-    def __enter__(self) -> Self:
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> None:
-        self.save_settings()
 
     def get_default_settings(self) -> Settings:
         """Returns the fallback settings."""
