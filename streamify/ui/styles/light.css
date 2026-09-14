@@ -308,3 +308,28 @@ QPushButton#launchBtn {
     font-size: 11px;
     border-radius: 4px;
 }
+
+/* ============================================================
+   SPLITSCREEN / DOCKING SYSTEM
+============================================================ */
+QDockWidget {
+    color: #18181b;
+    font-weight: bold;
+}
+
+QDockWidget::title {
+    background: #efeff1;
+    padding-left: 10px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+QMainWindow::separator {
+    background-color: #27272a;
+    width: 4px;
+    height: 4px;
+}
+
+QMainWindow::separator:hover {
+    background-color: #efeff1;
+}

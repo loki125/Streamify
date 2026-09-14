@@ -4,7 +4,6 @@ from __future__ import annotations
 from typing import Any
 
 from PyQt6.QtCore import QSize, Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -12,7 +11,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMdiArea,
+    QMainWindow,
     QMessageBox,
     QPushButton,
     QSplitter,
@@ -80,14 +79,19 @@ class HomeTab(QWidget):
         safe_connect(self.btn_add_stream.clicked, self.open_add_dialog)
 
         # ==================== RIGHT VIEWING AREA ====================
-        self.mdi_area: QMdiArea = QMdiArea(self.splitter)
-        self.mdi_area.setViewMode(QMdiArea.ViewMode.TabbedView)
-        self.mdi_area.setTabsClosable(True)
+        self.mdi_area: QMainWindow = QMainWindow(self.splitter)
+        self.mdi_area.setWindowFlags(Qt.WindowType.Widget)
+        self.mdi_area.setDockNestingEnabled(True)
+        self.mdi_area.setDockOptions(
+            QMainWindow.DockOption.AllowNestedDocks
+            | QMainWindow.DockOption.AllowTabbedDocks
+        )
 
-        self.mdi_area.setBackground(QBrush(QColor("#0e0e10")))
+        dummy = QWidget()
+        dummy.setStyleSheet("background-color: #0e0e10;")
+        self.mdi_area.setCentralWidget(dummy)
 
         self.splitter.addWidget(self.mdi_area)
-
         self.splitter.setSizes([250, 950])
 
         safe_connect(self.search_input.textChanged, self.refresh_stream_list)
@@ -119,12 +123,20 @@ class HomeTab(QWidget):
         layout.addWidget(line)
         return container
 
+    def start_launch_override(self, stream_id: int, stream: Stream) -> None:
+        self.start_launch_workflow(stream_id, stream, override=True)
+
+    def start_launch_new(self, stream_id: int, stream: Stream) -> None:
+        self.start_launch_workflow(stream_id, stream, override=False)
+
     def _add_stream_item(self, stream_id: int, stream: Stream) -> None:
         """Helper to create and bind a stream row item."""
         item = QListWidgetItem(self.stream_list_widget)
         widget = StreamListItemWidget(stream, stream_id=stream_id)
 
-        safe_connect(widget.launch_requested, self.start_launch_workflow)
+        safe_connect(widget.launch_override_requested, self.start_launch_override)
+        safe_connect(widget.launch_new_requested, self.start_launch_new)
+
         safe_connect(widget.edit_requested, self.open_edit_dialog)
         safe_connect(widget.status_check_requested, self.trigger_single_status_check)
         safe_connect(widget.custom_settings_requested, self.open_custom_settings_dialog)
@@ -166,12 +178,14 @@ class HomeTab(QWidget):
         for stream_id, stream in offline_streams:
             self._add_stream_item(stream_id, stream)
 
-    def start_launch_workflow(self, stream_id: int, stream: Stream) -> None:
-        worker = LaunchPrecheckWorker(self.manager, stream_id, stream)
+    def start_launch_workflow(
+        self, stream_id: int, stream: Stream, override: bool
+    ) -> None:
+        worker = LaunchPrecheckWorker(self.manager, stream_id, stream, override)
 
         safe_connect(worker.is_offline, self.on_stream_offline)
         safe_connect(worker.ready_to_launch, self.on_qualities_ready)
-        safe_connect(worker.finished, lambda w=worker: self.active_workers.remove(w))  # type: ignore
+        safe_connect(worker.finished, lambda w=worker: self.active_workers.remove(w))
 
         self.active_workers.append(worker)
         worker.start()
@@ -182,15 +196,19 @@ class HomeTab(QWidget):
         )
 
     def on_qualities_ready(
-        self, available_qualities: list[str], stream_id: int, stream: Stream
+        self,
+        available_qualities: list[str],
+        stream_id: int,
+        stream: Stream,
+        override: bool,
     ) -> None:
-        for sub_window in self.mdi_area.subWindowList():
-            if (
-                isinstance(sub_window, StreamVideoWindow)
-                and sub_window.stream_id == stream_id
-            ):
-                self.mdi_area.setActiveSubWindow(sub_window)
-                return
+        if override:
+            self.close_all_streams()
+        else:
+            for dock in self.mdi_area.findChildren(StreamVideoWindow):
+                if dock.stream_id == stream_id:
+                    dock.raise_()
+                    return
 
         settings = self.manager.settings_config.get_settings()
         preferred_quality, auto_enabled = settings.auto_select_quality
@@ -225,7 +243,7 @@ class HomeTab(QWidget):
             pause_key=pause_k,
             mute_key=mute_k,
         )
-        _ = self.mdi_area.addSubWindow(video_window)
+        self.mdi_area.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, video_window)
         video_window.showMaximized()
 
         win_id = video_window.get_win_id()
@@ -246,7 +264,8 @@ class HomeTab(QWidget):
 
     def close_all_streams(self) -> None:
         """Closes all video windows, which triggers their stop_stream logic."""
-        self.mdi_area.closeAllSubWindows()
+        for dock in self.mdi_area.findChildren(StreamVideoWindow):
+            _ = dock.close()
 
     def _resolve_category_id(self, category_str: str) -> int:
         """Helper to convert string to ID, creating a new category if needed."""

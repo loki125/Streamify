@@ -20,15 +20,20 @@ class LaunchPrecheckWorker(QThread):
 
     is_offline: pyqtSignal = pyqtSignal(str)
     auto_ready_to_launch: pyqtSignal = pyqtSignal(str, int, object)
-    ready_to_launch: pyqtSignal = pyqtSignal(list, int, object)
+    ready_to_launch: pyqtSignal = pyqtSignal(list, int, object, bool)
 
     def __init__(
-        self, manager: StreamlinkManager, stream_id: int, stream_obj: Stream
+        self,
+        manager: StreamlinkManager,
+        stream_id: int,
+        stream_obj: Stream,
+        override: bool,
     ) -> None:
         super().__init__()
         self.manager: StreamlinkManager = manager
         self.stream_id: int = stream_id
         self.stream_obj: Stream = stream_obj
+        self.override: bool = override
 
     @override
     def run(self) -> None:
@@ -41,7 +46,9 @@ class LaunchPrecheckWorker(QThread):
             return
 
         qualities = self.manager.check_qualities(self.stream_id)
-        self.ready_to_launch.emit(qualities, self.stream_id, self.stream_obj)
+        self.ready_to_launch.emit(
+            qualities, self.stream_id, self.stream_obj, self.override
+        )
 
 
 class GlobalStatusWorker(QThread):

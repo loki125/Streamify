@@ -10,13 +10,13 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QPushButton,
-    QTabBar,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from streamify.backend.manager import StreamlinkManager
+from streamify.ui.utils.widgets import StreamVideoWindow
 
 from .tabs.home_tab import HomeTab
 from .tabs.settings_tab import SettingsTab
@@ -75,7 +75,7 @@ class MainWindow(QMainWindow):
         if isinstance(focused, (QLineEdit, QKeySequenceEdit)):
             return
 
-        if not self.home_tab.mdi_area.subWindowList():
+        if not self.home_tab.mdi_area.findChildren(StreamVideoWindow):
             return
 
         if self.isFullScreen():
@@ -85,14 +85,16 @@ class MainWindow(QMainWindow):
 
     def enter_fullscreen(self) -> None:
         """Hides all UI bars and maximizes the video across the whole monitor."""
-        tabbar = self.tabs.tabBar()
-        if tabbar is not None:
-            tabbar.hide()
-        self.home_tab.sidebar_widget.hide()
+        tab_bar = self.tabs.tabBar()
+        if tab_bar is not None:
+            tab_bar.hide()
 
-        mdi_tab_bar = self.home_tab.mdi_area.findChild(QTabBar)
-        if mdi_tab_bar:
-            mdi_tab_bar.hide()
+        self.btn_fullscreen.hide()
+        self.home_tab.sidebar_widget.hide()
+        self.home_tab.splitter.setHandleWidth(0)
+
+        for dock in self.home_tab.mdi_area.findChildren(StreamVideoWindow):
+            dock.setTitleBarWidget(QWidget())
 
         self.showFullScreen()
 
@@ -101,13 +103,15 @@ class MainWindow(QMainWindow):
         if not self.isFullScreen():
             return
 
-        tabbar = self.tabs.tabBar()
-        if tabbar is not None:
-            tabbar.show()
-        self.home_tab.sidebar_widget.show()
+        tab_bar = self.tabs.tabBar()
+        if tab_bar is not None:
+            tab_bar.show()
 
-        mdi_tab_bar = self.home_tab.mdi_area.findChild(QTabBar)
-        if mdi_tab_bar:
-            mdi_tab_bar.show()
+        self.btn_fullscreen.show()
+        self.home_tab.sidebar_widget.show()
+        self.home_tab.splitter.setHandleWidth(2)
+
+        for dock in self.home_tab.mdi_area.findChildren(StreamVideoWindow):
+            dock.setTitleBarWidget(None)
 
         self.showNormal()
