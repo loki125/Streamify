@@ -3,10 +3,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -96,37 +98,75 @@ class HomeTab(QWidget):
         query = self.search_input.text().lower()
         self.refresh_stream_list(query=query)
 
-    def refresh_stream_list(self, query: str = "") -> None:
-        """Fetches streams and populates the list, applying a filter if requested."""
-        self.stream_list_widget.clear()
+    def _create_separator_widget(self) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(10, 8, 10, 4)
+        layout.setSpacing(4)
 
+        lbl = QLabel("Offline")
+        lbl.setStyleSheet(
+            "color: #71717a; font-size: 11px; font-weight: bold; text-transform: uppercase;"
+        )
+
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setStyleSheet(
+            "background-color: #27272a; min-height: 1px; max-height: 1px; border: none;"
+        )
+
+        layout.addWidget(lbl)
+        layout.addWidget(line)
+        return container
+
+    def _add_stream_item(self, stream_id: int, stream: Stream) -> None:
+        """Helper to create and bind a stream row item."""
+        item = QListWidgetItem(self.stream_list_widget)
+        widget = StreamListItemWidget(stream, stream_id=stream_id)
+
+        safe_connect(widget.launch_requested, self.start_launch_workflow)
+        safe_connect(widget.edit_requested, self.open_edit_dialog)
+        safe_connect(widget.status_check_requested, self.trigger_single_status_check)
+        safe_connect(widget.custom_settings_requested, self.open_custom_settings_dialog)
+        safe_connect(widget.remove_requested, self.remove_stream)
+
+        widget.update_status(stream.live)
+
+        item.setSizeHint(QSize(widget.sizeHint().width(), 40))
+        self.stream_list_widget.addItem(item)
+        self.stream_list_widget.setItemWidget(item, widget)
+
+    def refresh_stream_list(self, query: str = "") -> None:
+        self.stream_list_widget.clear()
         all_streams = self.manager.query_streams()
+
+        live_streams: list[tuple[int, Stream]] = []
+        offline_streams: list[tuple[int, Stream]] = []
 
         for index, stream in all_streams:
             if query and query not in stream.name.lower():
                 continue
 
-            item = QListWidgetItem(self.stream_list_widget)
-            widget = StreamListItemWidget(stream, stream_id=index)
+            if stream.live:
+                live_streams.append((index, stream))
+            else:
+                offline_streams.append((index, stream))
 
-            safe_connect(widget.launch_requested, self.start_launch_workflow)
-            safe_connect(widget.edit_requested, self.open_edit_dialog)
-            safe_connect(
-                widget.status_check_requested, self.trigger_single_status_check
-            )
-            safe_connect(widget.remove_requested, self.remove_stream)
-            safe_connect(
-                widget.custom_settings_requested, self.open_custom_settings_dialog
-            )
+        for stream_id, stream in live_streams:
+            self._add_stream_item(stream_id, stream)
 
-            widget.update_status(stream.live)
+        if offline_streams:
+            sep_item = QListWidgetItem(self.stream_list_widget)
+            sep_item.setFlags(Qt.ItemFlag.NoItemFlags)
+            sep_widget = self._create_separator_widget()
+            sep_item.setSizeHint(sep_widget.sizeHint())
+            self.stream_list_widget.addItem(sep_item)
+            self.stream_list_widget.setItemWidget(sep_item, sep_widget)
 
-            item.setSizeHint(widget.sizeHint())
-            self.stream_list_widget.addItem(item)
-            self.stream_list_widget.setItemWidget(item, widget)
+        for stream_id, stream in offline_streams:
+            self._add_stream_item(stream_id, stream)
 
     def start_launch_workflow(self, stream_id: int, stream: Stream) -> None:
-        """STEP 1: Run status and quality checks in the background."""
         worker = LaunchPrecheckWorker(self.manager, stream_id, stream)
 
         safe_connect(worker.is_offline, self.on_stream_offline)
@@ -137,7 +177,6 @@ class HomeTab(QWidget):
         worker.start()
 
     def on_stream_offline(self, stream_name: str) -> None:
-        """STEP 2 (Failed): Pop up error if stream is offline."""
         _ = QMessageBox.warning(
             self, "Stream Offline", f"The stream '{stream_name}' is currently offline."
         )
@@ -242,8 +281,11 @@ class HomeTab(QWidget):
         dialog = dialogs.CustomStreamSettingsDialog(self, current_custom, settings)
 
         if dialog.exec():
-            new_custom = dialog.get_custom_settings()
-            settings.custom_settings[stream_id] = new_custom
+            if dialog.is_reset_to_default:
+                _ = settings.custom_settings.pop(stream_id, None)
+            else:
+                new_custom = dialog.get_custom_settings()
+                settings.custom_settings[stream_id] = new_custom
             self.manager.settings_config.set_settings(settings)
 
             self.manager.apply_settings(settings, stream_id)
@@ -264,21 +306,7 @@ class HomeTab(QWidget):
         )
         worker.start()
 
-    def on_global_statuses_checked(self, statuses: dict[int, bool]) -> None:
-        for i in range(self.stream_list_widget.count()):
-            item = self.stream_list_widget.item(i)
-            if item is None:
-                continue
-
-            widget = self.stream_list_widget.itemWidget(item)
-            if (
-                isinstance(widget, StreamListItemWidget)
-                and widget.stream_id in statuses
-            ):
-                widget.update_status(statuses[widget.stream_id])
-
     def trigger_single_status_check(self, stream_id: int, stream: Stream) -> None:
-        """Handles Right-Click -> Check Status."""
         worker = SingleStatusWorker(self.manager, stream_id, stream)
         self.active_workers.append(worker)
 
@@ -287,22 +315,19 @@ class HomeTab(QWidget):
         safe_connect(worker.checked_finished, self.worker_cleanup)
         worker.start()
 
+    def on_global_statuses_checked(self, statuses: dict[int, bool]) -> None:
+        """Updates in-memory state and re-sorts the entire list."""
+        self.btn_refresh.setEnabled(True)
+
+        for stream_id, is_live in statuses.items():
+            _ = self.manager.set_single_status(stream_id, is_live)
+
+        self.refresh_stream_list(self.search_input.text().lower())
+
     def on_single_status_checked(self, stream_id: int, is_live: bool) -> None:
-        """Saves status to backend and updates that one specific dot."""
-        _ = self.manager.set_single_status(stream_id, is_live)
-
-        for i in range(self.stream_list_widget.count()):
-            item = self.stream_list_widget.item(i)
-            if item is None:
-                continue
-
-            widget = self.stream_list_widget.itemWidget(item)
-            if (
-                isinstance(widget, StreamListItemWidget)
-                and widget.stream_id == stream_id
-            ):
-                widget.update_status(is_live)
-                break
+        """Updates one stream's status and re-sorts."""
+        if self.manager.set_single_status(stream_id, is_live):
+            self.refresh_stream_list(self.search_input.text().lower())
 
     def worker_cleanup(self, worker: QThread) -> None:
         if worker in self.active_workers:

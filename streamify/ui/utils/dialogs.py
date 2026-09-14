@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QKeySequence
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -12,6 +13,7 @@ from PyQt6.QtWidgets import (
     QInputDialog,
     QKeySequenceEdit,
     QLineEdit,
+    QPushButton,
     QSlider,
     QToolButton,
     QWidget,
@@ -141,7 +143,7 @@ class TwitchImportDialog(QDialog):
 
 
 class CustomStreamSettingsDialog(QDialog):
-    """Dialog for stream-specific overrides with native key press detection."""
+    """Dialog for stream-specific overrides with a Reset to Defaults button."""
 
     def __init__(
         self,
@@ -151,13 +153,16 @@ class CustomStreamSettingsDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Custom Stream Settings")
-        self.resize(320, 200)
+        self.setFixedWidth(340)
 
+        self.global_defaults: Settings = global_defaults
         self.settings: CustomSettings = (
             current_custom
             if current_custom
             else CustomSettings.default(global_defaults)
         )
+
+        self.is_reset_to_default: bool = False
 
         layout = QFormLayout(self)
 
@@ -180,12 +185,44 @@ class CustomStreamSettingsDialog(QDialog):
         layout.addRow("Mute/Unmute Key:", self.mute_input)
         layout.addRow("Stream Volume (0-100):", self.vol_slider)
 
+        bottom_bar = QHBoxLayout()
+
+        self.btn_reset: QPushButton = QPushButton("⇄ Revert")
+        self.btn_reset.setToolTip("Revert to global settings")
+        self.btn_reset.setStyleSheet("color: white;")
+        _ = self.btn_reset.clicked.connect(self.reset_to_defaults)
+
         self.buttons: QDialogButtonBox = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         _ = self.buttons.accepted.connect(self.accept)
         _ = self.buttons.rejected.connect(self.reject)
-        layout.addWidget(self.buttons)
+
+        bottom_bar.addWidget(self.btn_reset)
+        bottom_bar.addStretch()
+        bottom_bar.addWidget(self.buttons)
+
+        layout.addRow(bottom_bar)
+
+        _ = self.chat_check.toggled.connect(self._mark_custom)
+        _ = self.pause_input.keySequenceChanged.connect(self._mark_custom)
+        _ = self.mute_input.keySequenceChanged.connect(self._mark_custom)
+        _ = self.vol_slider.valueChanged.connect(self._mark_custom)
+
+    def _mark_custom(self) -> None:
+        self.is_reset_to_default = False
+
+    def reset_to_defaults(self) -> None:
+        """Repopulates all fields with the global settings values."""
+        self.is_reset_to_default = True
+        self.chat_check.setChecked(self.global_defaults.default_chat_active)
+        self.pause_input.setKeySequence(
+            QKeySequence(self.global_defaults.default_pause_start_key)
+        )
+        self.mute_input.setKeySequence(
+            QKeySequence(self.global_defaults.default_mute_unmute_key)
+        )
+        self.vol_slider.setValue(self.global_defaults.default_volume_num)
 
     def get_custom_settings(self) -> CustomSettings:
         return CustomSettings(

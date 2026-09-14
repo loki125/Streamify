@@ -7,7 +7,7 @@ from .backend.manager import StreamlinkManager
 from .ui.main_window import MainWindow
 from .ui.utils.config import load_stylesheet
 
-# emojies : ⟳ ✚ ⌨ ⚙️ ☾☼ ✏️ ✍︎ ⇄ ▶︎ ☰ ☕︎ ✘ ➜] ✖
+# emojies : ⟳ ✚ ⌨ ⚙️ ☾☼ ✏️ ✍︎ ⇄ ▶︎ ☰ ☕︎ ✘ ➜] ✖, ⌞ ⌝
 LOCALE_C = "C"
 
 

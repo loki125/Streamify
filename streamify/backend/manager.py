@@ -87,7 +87,9 @@ class StreamlinkManager:
             raw_url = self.construct_raw_url(stream_id, quality)
             settings = self.settings_config.get_settings()
 
-            player = mpv.MPV(wid=str(win_id), volume_max=150, log_handler=print)
+            player = mpv.MPV(
+                wid=str(win_id), volume_max=150, log_handler=print, panscan=1.0
+            )
             self._active_players[stream_id] = player
             self.apply_settings(settings, stream_id)
 

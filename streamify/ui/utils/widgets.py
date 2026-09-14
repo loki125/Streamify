@@ -35,9 +35,13 @@ class StreamVideoWindow(QMdiSubWindow):
         self.setWindowTitle(stream_name)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
 
+        self.setContentsMargins(0, 0, 0, 0)
+
         self.video_frame: QFrame = QFrame(self)
         self.video_frame.setStyleSheet("background-color: black;")
         self.video_frame.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
+
+        self.video_frame.setContentsMargins(0, 0, 0, 0)
         self.setWidget(self.video_frame)
 
         if pause_key:
@@ -120,9 +124,9 @@ class StreamListItemWidget(QWidget):
     def update_status(self, is_live: bool) -> None:
         if is_live:
             self.status_lbl.setText("◉")
-            self.status_lbl.setStyleSheet("color: green")
+            self.status_lbl.setStyleSheet("color: green; font-size: 20px;")
             self.status_lbl.setToolTip("Live")
         else:
             self.status_lbl.setText("⊝")
-            self.status_lbl.setStyleSheet("color: grey")
+            self.status_lbl.setStyleSheet("color: grey; font-size: 20px;")
             self.status_lbl.setToolTip("Offline")
