@@ -110,7 +110,8 @@ class StreamlinkManager:
         player = self._active_players[stream_id]
         if not player:
             return
-        player.volume = custom.volume_num
+        global_vol = settings.default_volume_num
+        player.volume = self._calculate_effective_volume(global_vol, custom)
 
         def format_key(qt_key: str) -> str:
             return qt_key.lower().replace(" ", "")
@@ -239,3 +240,12 @@ class StreamlinkManager:
             stream.name = name
             stream.url = url
             stream.category_id = category_id
+
+    def _calculate_effective_volume(
+        self, global_vol: int, custom: CustomSettings | None
+    ) -> float:
+        """Calculates final volume: Master Volume * Stream Multiplier."""
+        if custom is not None:
+            multiplier = custom.volume_num / 100.0
+            return float(global_vol * multiplier)
+        return float(global_vol)

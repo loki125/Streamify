@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from streamify.backend.core.models import Stream
+from streamify.backend.core.models import Quality, Stream
 from streamify.backend.manager import StreamlinkManager
 
 from ..utils import dialogs
@@ -191,6 +191,22 @@ class HomeTab(QWidget):
             ):
                 self.mdi_area.setActiveSubWindow(sub_window)
                 return
+
+        settings = self.manager.settings_config.get_settings()
+        preferred_quality, auto_enabled = settings.auto_select_quality
+
+        selected_quality: Quality | None = None
+
+        if auto_enabled and (
+            preferred_quality.value in available_qualities
+            or preferred_quality == Quality.best
+        ):
+            selected_quality = preferred_quality
+        else:
+            selected_quality = dialogs.ask_quality_dialog(self, available_qualities)
+
+        if not selected_quality:
+            return
 
         selected_quality = dialogs.ask_quality_dialog(self, available_qualities)
         if not selected_quality:

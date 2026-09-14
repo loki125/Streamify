@@ -19,6 +19,7 @@ class LaunchPrecheckWorker(QThread):
     """Handles the exact workflow: Check status -> If Live -> Check Qualities."""
 
     is_offline: pyqtSignal = pyqtSignal(str)
+    auto_ready_to_launch: pyqtSignal = pyqtSignal(str, int, object)
     ready_to_launch: pyqtSignal = pyqtSignal(list, int, object)
 
     def __init__(
@@ -31,17 +32,16 @@ class LaunchPrecheckWorker(QThread):
 
     @override
     def run(self) -> None:
-        is_live = self.manager.check_single_status(self.stream_obj)
 
-        if not is_live:
+        if not self.stream_obj.live or self.manager.check_single_status(
+            self.stream_obj
+        ):
             sig_off: Any = self.is_offline
             sig_off.emit(self.stream_obj.name)
             return
 
         qualities = self.manager.check_qualities(self.stream_id)
-
-        sig_ready: Any = self.ready_to_launch
-        sig_ready.emit(qualities, self.stream_id, self.stream_obj)
+        self.ready_to_launch.emit(qualities, self.stream_id, self.stream_obj)
 
 
 class GlobalStatusWorker(QThread):

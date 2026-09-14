@@ -28,7 +28,7 @@ class CustomSettings:
     chat_active: bool = False
     pause_start_key: str = "space"
     mute_unmute_key: str = "m"
-    volume_num: int = 50
+    volume_num: int = 100
 
     @classmethod
     def default(cls, settings: Settings) -> CustomSettings:
@@ -36,7 +36,7 @@ class CustomSettings:
             chat_active=settings.default_chat_active,
             pause_start_key=settings.default_pause_start_key,
             mute_unmute_key=settings.default_mute_unmute_key,
-            volume_num=settings.default_volume_num,
+            volume_num=100,
         )
 
     @classmethod

@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QKeySequenceEdit,
+    QLabel,
     QLineEdit,
     QPushButton,
     QSlider,
@@ -177,8 +178,22 @@ class CustomStreamSettingsDialog(QDialog):
         )
 
         self.vol_slider: QSlider = QSlider(Qt.Orientation.Horizontal)
-        self.vol_slider.setRange(0, 100)
+        self.vol_slider.setRange(0, 200)
         self.vol_slider.setValue(self.settings.volume_num)
+
+        self.vol_label: QLabel = QLabel(f"{self.settings.volume_num}%")
+        self.vol_label.setFixedWidth(45)
+
+        def vol_lable_text(v: int):
+            self.vol_label.setText(f"{v}%")
+
+        _ = self.vol_slider.valueChanged.connect(vol_lable_text)
+
+        vol_box = QHBoxLayout()
+        vol_box.addWidget(self.vol_slider)
+        vol_box.addWidget(self.vol_label)
+
+        layout.addRow("Stream Volume Multiplier:", vol_box)
 
         layout.addRow("Chat Active (Future):", self.chat_check)
         layout.addRow("Pause/Start Key:", self.pause_input)
@@ -222,7 +237,7 @@ class CustomStreamSettingsDialog(QDialog):
         self.mute_input.setKeySequence(
             QKeySequence(self.global_defaults.default_mute_unmute_key)
         )
-        self.vol_slider.setValue(self.global_defaults.default_volume_num)
+        self.vol_slider.setValue(100)
 
     def get_custom_settings(self) -> CustomSettings:
         return CustomSettings(
