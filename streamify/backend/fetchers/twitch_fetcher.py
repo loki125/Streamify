@@ -119,7 +119,6 @@ class TwitchFetcher(BaseFetcher):
             payload = {
                 "query": f'query {{ user(login: "{channel}") {{ stream {{ type }} }} }}'
             }
-
             resp = requests.post(
                 "https://gql.twitch.tv/gql",
                 json=payload,

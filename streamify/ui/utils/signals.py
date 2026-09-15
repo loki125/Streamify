@@ -4,6 +4,7 @@ from typing import Any, override
 
 from PyQt6.QtCore import QThread, pyqtSignal
 from requests.exceptions import RequestException
+from streamlink.exceptions import StreamlinkError
 
 from streamify.backend.core.models import Stream
 from streamify.backend.fetchers.base_fetcher import BaseFetcher
@@ -19,7 +20,6 @@ class LaunchPrecheckWorker(QThread):
     """Handles the exact workflow: Check status -> If Live -> Check Qualities."""
 
     is_offline: pyqtSignal = pyqtSignal(str)
-    auto_ready_to_launch: pyqtSignal = pyqtSignal(str, int, object)
     ready_to_launch: pyqtSignal = pyqtSignal(list, int, object, bool)
 
     def __init__(
@@ -37,24 +37,28 @@ class LaunchPrecheckWorker(QThread):
 
     @override
     def run(self) -> None:
-
-        if not self.stream_obj.live or self.manager.check_single_status(
-            self.stream_obj
-        ):
-            sig_off: Any = self.is_offline
-            sig_off.emit(self.stream_obj.name)
+        if not self.stream_obj.live:
+            self.is_offline.emit(self.stream_obj.name)
             return
 
         qualities = self.manager.check_qualities(self.stream_id)
+        if not qualities:
+            _ = self.manager.check_single_status(self.stream_obj)
+            self.is_offline.emit(self.stream_obj.name)
+            return
+
         self.ready_to_launch.emit(
-            qualities, self.stream_id, self.stream_obj, self.override
+            qualities,
+            self.stream_id,
+            self.stream_obj,
+            self.override,
         )
 
 
 class GlobalStatusWorker(QThread):
     """Checks the status of all streams (for the refresh button)."""
 
-    checked_finished: pyqtSignal = pyqtSignal(dict)
+    checked_finished: pyqtSignal = pyqtSignal(dict, bool)
 
     def __init__(self, manager: StreamlinkManager) -> None:
         super().__init__()
@@ -62,14 +66,19 @@ class GlobalStatusWorker(QThread):
 
     @override
     def run(self) -> None:
-        statuses = self.manager.check_statuses()
-        self.checked_finished.emit(statuses)
+        inte_error = False
+        statuses = {}
+        try:
+            statuses = self.manager.check_statuses()
+        except (StreamlinkError, OSError, RequestException):
+            inte_error = True
+        self.checked_finished.emit(statuses, inte_error)
 
 
 class SingleStatusWorker(QThread):
     """Checks the status of a single stream (from right-click menu)."""
 
-    checked_finished: pyqtSignal = pyqtSignal(int, bool)
+    checked_finished: pyqtSignal = pyqtSignal(int, bool, bool)
 
     def __init__(
         self, manager: StreamlinkManager, stream_id: int, stream_obj: Any
@@ -81,8 +90,15 @@ class SingleStatusWorker(QThread):
 
     @override
     def run(self) -> None:
-        is_live = self.manager.check_single_status(self.stream_obj)
-        self.checked_finished.emit(self.stream_id, is_live)
+        inter_error: bool = False
+        is_live: bool = False
+
+        try:
+            is_live = self.manager.check_single_status(self.stream_obj)
+        except (RequestException, StreamlinkError) as _:
+            inter_error = True
+
+        self.checked_finished.emit(self.stream_id, is_live, inter_error)
 
 
 class FetchFollowsWorker(QThread):

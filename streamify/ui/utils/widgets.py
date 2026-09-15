@@ -72,6 +72,42 @@ class StreamVideoWindow(QDockWidget):
     def get_win_id(self) -> int:
         return int(self.video_frame.winId())
 
+    def recycle_stream(
+        self,
+        new_stream_id: int,
+        new_stream_name: str,
+        new_pause_key: str,
+        new_mute_key: str,
+    ) -> None:
+        """Stops the current stream and updates the window details to prepare for a new one."""
+        self.manager.stop_stream(self.stream_id)
+
+        self.stream_id = new_stream_id
+        self.setWindowTitle(new_stream_name)
+
+        if hasattr(self, "pause_shortcut"):
+            self.pause_shortcut.activated.disconnect()
+        if hasattr(self, "mute_shortcut"):
+            self.mute_shortcut.activated.disconnect()
+
+        if new_pause_key:
+            if not hasattr(self, "pause_shortcut"):
+                self.pause_shortcut = QShortcut(QKeySequence(new_pause_key), self)
+            else:
+                self.pause_shortcut.setKey(QKeySequence(new_pause_key))
+            _ = self.pause_shortcut.activated.connect(
+                lambda: self.manager.toggle_pause(self.stream_id)
+            )
+
+        if new_mute_key:
+            if not hasattr(self, "mute_shortcut"):
+                self.mute_shortcut = QShortcut(QKeySequence(new_mute_key), self)
+            else:
+                self.mute_shortcut.setKey(QKeySequence(new_mute_key))
+            _ = self.mute_shortcut.activated.connect(
+                lambda: self.manager.toggle_mute(self.stream_id)
+            )
+
     @override
     def closeEvent(self, event: QCloseEvent | None) -> None:
         """When the user clicks the 'X', tell the backend to stop the stream."""

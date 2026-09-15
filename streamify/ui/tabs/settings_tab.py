@@ -233,6 +233,10 @@ class SettingsTab(QWidget):
 
         self.manager.all_apply_settings()
 
+        mw: Any = self.main_window
+        if hasattr(mw, "home_tab"):
+            mw.home_tab.apply_timer_settings()
+
     def set_theme(self) -> None:
         new_theme = Theme(self.theme_combo.currentText())
         if self.settings.dark_light_mode != new_theme:

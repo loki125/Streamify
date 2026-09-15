@@ -166,11 +166,8 @@ class StreamlinkManager:
         if fetcher is not None:
             return fetcher.check_status(stream_obj.url)
 
-        try:
-            streams = self._session.streams(stream_obj.url)
-            return bool(streams)
-        except (StreamlinkError, OSError):
-            return False
+        streams = self._session.streams(stream_obj.url)
+        return bool(streams)
 
     def set_single_status(self, stream_index: int, is_live: bool) -> bool:
         return self._database.update_stream_status(stream_index, is_live)

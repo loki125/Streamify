@@ -26,7 +26,9 @@ from streamify.backend.manager import StreamlinkManager
 from ..utils.config import TWITCH_IMPORT_HELP
 
 
-def ask_quality_dialog(parent: QWidget, fetched_qualities: list[str]) -> Quality | None:
+def ask_quality_dialog(
+    parent: QWidget, fetched_qualities: list[str], auto_select: bool
+) -> Quality | None:
     """Prompts the user for stream quality, returning a Quality Enum."""
 
     valid_enum_values = [q.value for q in Quality]
@@ -39,9 +41,12 @@ def ask_quality_dialog(parent: QWidget, fetched_qualities: list[str]) -> Quality
             Quality.worst.value,
             Quality.audio_only.value,
         ]
+    msg = "Available Qualities:"
+    if auto_select:
+        msg = "Auto selected qualitys isnt vailable\n\n" + msg
 
     quality_str, ok = QInputDialog.getItem(
-        parent, "Select Quality", "Available Qualities:", display_qualities, 0, False
+        parent, "Select Quality", msg, display_qualities, 0, False
     )
 
     if ok and quality_str:

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import QSize, Qt, QThread, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -44,6 +44,12 @@ class HomeTab(QWidget):
         safe_connect(self.stream_error_signal, self.show_stream_error)
         self.init_ui()
         self.refresh_stream_list()
+
+        self.refresh_timer: QTimer = QTimer(self)
+        safe_connect(self.refresh_timer.timeout, self.trigger_global_status_check)
+        self.apply_timer_settings()
+
+        self.trigger_global_status_check()
 
     def init_ui(self) -> None:
         layout = QHBoxLayout(self)
@@ -87,9 +93,11 @@ class HomeTab(QWidget):
             | QMainWindow.DockOption.AllowTabbedDocks
         )
 
-        dummy = QWidget()
-        dummy.setStyleSheet("background-color: #0e0e10;")
-        self.mdi_area.setCentralWidget(dummy)
+        self.mdi_area.setStyleSheet(
+            "QMainWindow { background-color: black; border: none; }"
+        )
+
+        self.mdi_area.setCentralWidget(None)
 
         self.splitter.addWidget(self.mdi_area)
         self.splitter.setSizes([250, 950])
@@ -97,6 +105,16 @@ class HomeTab(QWidget):
         safe_connect(self.search_input.textChanged, self.refresh_stream_list)
 
     # ==================== LOGIC ====================
+    def apply_timer_settings(self) -> None:
+        """Reads the settings and starts/stops the auto-refresh timer."""
+        settings = self.manager.settings_config.get_settings()
+
+        self.refresh_timer.stop()
+
+        if settings.auto_refresh_sec > 0:
+            interval_ms = int(settings.auto_refresh_sec * 1000)
+            self.refresh_timer.start(interval_ms)
+
     def perform_search(self) -> None:
         """Filters the streams based on the search input."""
         query = self.search_input.text().lower()
@@ -202,13 +220,12 @@ class HomeTab(QWidget):
         stream: Stream,
         override: bool,
     ) -> None:
-        if override:
-            self.close_all_streams()
-        else:
-            for dock in self.mdi_area.findChildren(StreamVideoWindow):
-                if dock.stream_id == stream_id:
-                    dock.raise_()
-                    return
+        all_docks = self.mdi_area.findChildren(StreamVideoWindow)
+
+        for dock in all_docks:
+            if dock.stream_id == stream_id:
+                dock.raise_()
+                return
 
         settings = self.manager.settings_config.get_settings()
         preferred_quality, auto_enabled = settings.auto_select_quality
@@ -221,12 +238,10 @@ class HomeTab(QWidget):
         ):
             selected_quality = preferred_quality
         else:
-            selected_quality = dialogs.ask_quality_dialog(self, available_qualities)
+            selected_quality = dialogs.ask_quality_dialog(
+                self, available_qualities, auto_enabled
+            )
 
-        if not selected_quality:
-            return
-
-        selected_quality = dialogs.ask_quality_dialog(self, available_qualities)
         if not selected_quality:
             return
 
@@ -236,16 +251,33 @@ class HomeTab(QWidget):
         pause_k = custom.pause_start_key if custom else settings.default_pause_start_key
         mute_k = custom.mute_unmute_key if custom else settings.default_mute_unmute_key
 
-        video_window = StreamVideoWindow(
-            stream_id=stream_id,
-            stream_name=stream.name,
-            manager=self.manager,
-            pause_key=pause_k,
-            mute_key=mute_k,
-        )
-        self.mdi_area.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, video_window)
-        video_window.showMaximized()
+        video_window: StreamVideoWindow | None = None
 
+        if override and all_docks:
+            focused_widget = self.mdi_area.focusWidget()
+            while focused_widget and not isinstance(focused_widget, StreamVideoWindow):
+                focused_widget = focused_widget.parentWidget()
+
+            if isinstance(focused_widget, StreamVideoWindow):
+                video_window = focused_widget
+            else:
+                video_window = all_docks[0]
+
+            video_window.recycle_stream(stream_id, stream.name, pause_k, mute_k)
+
+        else:
+            video_window = StreamVideoWindow(
+                stream_id=stream_id,
+                stream_name=stream.name,
+                manager=self.manager,
+                pause_key=pause_k,
+                mute_key=mute_k,
+            )
+            self.mdi_area.addDockWidget(
+                Qt.DockWidgetArea.LeftDockWidgetArea, video_window
+            )
+
+        video_window.raise_()
         win_id = video_window.get_win_id()
 
         def on_error_callback(_failed_stream_id: int, error_msg: str) -> None:
@@ -350,17 +382,37 @@ class HomeTab(QWidget):
         safe_connect(worker.checked_finished, self.worker_cleanup)
         worker.start()
 
-    def on_global_statuses_checked(self, statuses: dict[int, bool]) -> None:
+    def on_global_statuses_checked(
+        self, statuses: dict[int, bool], has_internet_error: bool
+    ) -> None:
         """Updates in-memory state and re-sorts the entire list."""
         self.btn_refresh.setEnabled(True)
+
+        if has_internet_error:
+            _ = QMessageBox.critical(
+                self, "Network Error", "No connection. Please check your network!"
+            )
+        elif not statuses and len(self.manager.query_streams()) > 0:
+            _ = QMessageBox.information(
+                self,
+                "No status changed",
+                "None of the streams statuses has changed, pls try refreshing later.",
+            )
 
         for stream_id, is_live in statuses.items():
             _ = self.manager.set_single_status(stream_id, is_live)
 
         self.refresh_stream_list(self.search_input.text().lower())
 
-    def on_single_status_checked(self, stream_id: int, is_live: bool) -> None:
+    def on_single_status_checked(
+        self, stream_id: int, is_live: bool, has_internet_error: bool
+    ) -> None:
         """Updates one stream's status and re-sorts."""
+        if has_internet_error:
+            _ = QMessageBox.critical(
+                self, "Network Error", "No connection. Please check your network!"
+            )
+
         if self.manager.set_single_status(stream_id, is_live):
             self.refresh_stream_list(self.search_input.text().lower())
 
