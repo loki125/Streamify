@@ -38,7 +38,7 @@ include = ["streamify*"]
 
 [tool.setuptools.data-files]
 "share/applications" = ["share/applications/streamify.desktop"]
-"share/icons/hicolor/256x256/apps" = ["share/icons/hicolor/256x256/apps/streamify.png"]
+"share/icons/hicolor/256x256/apps" = ["share/icons/hicolor/256x256/apps/streamify.svg"]
 
 [tool.pyright]
 venvPath = "."
