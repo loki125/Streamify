@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+import json
+import os
+import re
+
+from .config import DEFAULT_CATEGORY, STREAM_LIST
+from .models import MediaCatalog, Stream
+
+
+class StreamDB:
+    def __init__(self):
+        self._media_cat: MediaCatalog = self.load_streams_json()
+
+    def load_streams_json(self) -> MediaCatalog:
+        try:
+            with open(STREAM_LIST, "r") as f:
+                content = f.read().strip()
+                if not content:
+                    return self.init_streams_json()
+
+                data = json.loads(content)
+                return MediaCatalog.from_dict(data)
+
+        except (FileNotFoundError, json.JSONDecodeError):
+            return self.init_streams_json()
+
+    def init_streams_json(self) -> MediaCatalog:
+        defualt_catalog = MediaCatalog(streams=[], categories=[DEFAULT_CATEGORY])
+        if not os.path.exists(STREAM_LIST):
+            os.makedirs(os.path.dirname(STREAM_LIST), exist_ok=True)
+
+        with open(STREAM_LIST, "w") as data:
+            json.dump(defualt_catalog.to_dict(), data, indent=4)
+
+        return defualt_catalog
+
+    def save_streams_json(self):
+        with open(STREAM_LIST, "w") as data:
+            json.dump(self._media_cat.to_dict(), data, indent=4)
+
+    def add_stream(self, stream: Stream) -> int:
+        self._media_cat.streams.append(stream)
+
+        return len(self._media_cat.streams) - 1
+
+    def remove_stream(self, stream_index: int) -> Stream | None:
+        try:
+            stream = self._media_cat.streams.pop(stream_index)
+            return stream
+        except IndexError:
+            return None
+
+    def remove_all_streams(self) -> None:
+        self._media_cat.streams.clear()
+
+    def add_category(self, category: str):
+        self._media_cat.categories.append(category)
+
+    def remove_category(self, category: str) -> bool:
+        try:
+            self._media_cat.categories.remove(category)
+            return True
+        except ValueError:
+            return False
+
+    def search_stream(self, query: str) -> list[tuple[int, Stream]]:
+        results: list[tuple[int, Stream]] = []
+        query_pattern = re.compile(query, re.IGNORECASE) if query else None
+
+        for idx, s in enumerate(self._media_cat.streams):
+            if not query_pattern:
+                results.append((idx, s))
+                continue
+
+            name_matches = bool(query_pattern.search(s.name))
+            cat_name = ""
+            if 0 <= s.category_id < len(self._media_cat.categories):
+                cat_name = self._media_cat.categories[s.category_id]
+
+            category_matches = bool(query_pattern.search(cat_name))
+
+            if name_matches or category_matches:
+                results.append((idx, s))
+
+        return results
+
+    def get_stream(self, stream_id: int) -> Stream | None:
+        return (
+            self._media_cat.streams[stream_id]
+            if 0 <= stream_id < len(self._media_cat.streams)
+            else None
+        )
+
+    def get_all_streams(self) -> list[Stream]:
+        return self._media_cat.streams
+
+    def get_all_categories(self) -> list[str]:
+        return self._media_cat.categories
+
+    def update_stream_status(self, stream_id: int, is_live: bool) -> bool:
+        if 0 <= stream_id < len(self._media_cat.streams):
+            current_status = self._media_cat.streams[stream_id].live
+            if current_status != is_live:
+                self._media_cat.streams[stream_id].live = is_live
+                return True
+        return False
