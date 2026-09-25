@@ -1,9 +1,10 @@
 # pyright: reportUnknownMemberType=none
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, override
 
-from PyQt6.QtCore import QSize, Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QObject, QSize, Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtGui import QMouseEvent
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -40,6 +41,7 @@ class HomeTab(QWidget):
         super().__init__()
         self.manager: StreamlinkManager = manager
         self.active_workers: list[QThread] = []
+        self.last_sidebar_width: int = 250
 
         safe_connect(self.stream_error_signal, self.show_stream_error)
         self.init_ui()
@@ -83,6 +85,22 @@ class HomeTab(QWidget):
 
         safe_connect(self.btn_refresh.clicked, self.trigger_global_status_check)
         safe_connect(self.btn_add_stream.clicked, self.open_add_dialog)
+
+        # ==================== RESTORE BUTTON & TRACKING ====================
+        self.restore_btn: QPushButton = QPushButton(">", self)
+        self.restore_btn.setFixedSize(20, 60)
+        self.restore_btn.hide()
+
+        safe_connect(self.restore_btn.clicked, self.restore_sidebar)
+
+        safe_connect(self.splitter.splitterMoved, self.on_splitter_moved)
+
+        self.setMouseTracking(True)
+        self.splitter.setMouseTracking(True)
+        self.mdi_area.setMouseTracking(True)
+
+        self.splitter.installEventFilter(self)
+        self.mdi_area.installEventFilter(self)
 
         # ==================== RIGHT VIEWING AREA ====================
         self.mdi_area: QMainWindow = QMainWindow(self.splitter)
@@ -419,3 +437,52 @@ class HomeTab(QWidget):
     def worker_cleanup(self, worker: QThread) -> None:
         if worker in self.active_workers:
             self.active_workers.remove(worker)
+
+    def on_splitter_moved(self, _pos: int, _index: int) -> None:
+        """Saves sidebar width while dragging and hides button if visible."""
+        sizes = self.splitter.sizes()
+        if sizes[0] > 0:
+            self.last_sidebar_width = sizes[0]
+            if self.restore_btn.isVisible():
+                self.restore_btn.hide()
+
+    def restore_sidebar(self) -> None:
+        """Restores the sidebar back to its previous width."""
+        restore_w = self.last_sidebar_width if self.last_sidebar_width > 50 else 250
+        total_w = self.width()
+        self.splitter.setSizes([restore_w, max(1, total_w - restore_w)])
+        self.restore_btn.hide()
+
+    @override
+    def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
+        """Detects hovering near the left edge when the sidebar is collapsed."""
+        if a1 is None or a0 is None:
+            return False
+
+        watched = a0
+        event = a1
+        if (
+            isinstance(event, QMouseEvent)
+            and event.type() == QEvent.Type.MouseMove
+            and self.splitter.sizes()[0] == 0
+        ):
+            local_pos = self.mapFromGlobal(event.globalPosition().toPoint())
+            x = local_pos.x()
+            y = local_pos.y()
+
+            if x <= 15:
+                btn_y = max(
+                    10,
+                    min(
+                        y - (self.restore_btn.height() // 2),
+                        self.height() - self.restore_btn.height() - 10,
+                    ),
+                )
+                self.restore_btn.move(0, btn_y)
+                self.restore_btn.show()
+                self.restore_btn.raise_()
+
+            elif x > self.restore_btn.width() + 15 and self.restore_btn.isVisible():
+                self.restore_btn.hide()
+
+        return super().eventFilter(watched, event)
